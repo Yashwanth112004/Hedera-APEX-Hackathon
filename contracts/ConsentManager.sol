@@ -17,7 +17,17 @@ contract ConsentManager {
         bool erased;
     }
 
+    struct AccessRequest {
+        uint256 id;
+        address provider;
+        string purpose;
+        uint256 timestamp;
+        bool isPending;
+    }
+
     mapping(address => Consent[]) private consents;
+    mapping(address => AccessRequest[]) private accessRequests;
+    uint256 private requestCounter;
 
     DataFiduciaryRegistry public registry;
     AuditLog public audit;
@@ -70,8 +80,8 @@ contract ConsentManager {
         audit.logErasureRequested(msg.sender, block.timestamp);
     }
 
-    function getMyConsents() external view returns (Consent[] memory) {
-        return consents[msg.sender];
+    function getPatientConsents(address _patient) external view returns (Consent[] memory) {
+        return consents[_patient];
     }
 
     function validateConsent(
@@ -89,5 +99,93 @@ contract ConsentManager {
         }
 
         return false;
+    }
+
+    // --- NEW: Inbound Provider Access Requests ---
+
+    function requestAccess(address _patient, string memory _purpose) external {
+        // Bypassed for Prototype Demo to allow any tester's wallet to act as Fiduciary
+        // require(registry.isApproved(msg.sender), "Caller is not an approved fiduciary");
+
+        requestCounter++;
+        accessRequests[_patient].push(AccessRequest({
+            id: requestCounter,
+            provider: msg.sender,
+            purpose: _purpose,
+            timestamp: block.timestamp,
+            isPending: true
+        }));
+
+        // Log the formal request on-chain
+        audit.logDataAccessed(_patient, msg.sender, string(abi.encodePacked("Requested access for: ", _purpose)), block.timestamp);
+    }
+
+    function getPendingRequests(address _patient) external view returns (AccessRequest[] memory) {
+        // Return all requests for the caller (patient) that are still pending
+        uint256 count = 0;
+        for (uint256 i = 0; i < accessRequests[_patient].length; i++) {
+            if (accessRequests[_patient][i].isPending) {
+                count++;
+            }
+        }
+
+        AccessRequest[] memory pending = new AccessRequest[](count);
+        uint256 idx = 0;
+        for (uint256 i = 0; i < accessRequests[_patient].length; i++) {
+            if (accessRequests[_patient][i].isPending) {
+                pending[idx] = accessRequests[_patient][i];
+                idx++;
+            }
+        }
+        return pending;
+    }
+
+    // Patient approves a specific pending request
+    function approveRequest(
+        uint256 _requestId,
+        string memory _dataHash, // Optional, can be empty if mapping via MedicalRecords
+        uint256 _durationInSeconds
+    ) external {
+        
+        // Find the request
+        int256 foundIdx = -1;
+        for (uint256 i = 0; i < accessRequests[msg.sender].length; i++) {
+            if (accessRequests[msg.sender][i].id == _requestId && accessRequests[msg.sender][i].isPending) {
+                foundIdx = int256(i);
+                break;
+            }
+        }
+        
+        require(foundIdx != -1, "Pending request not found");
+        
+        AccessRequest storage req = accessRequests[msg.sender][uint256(foundIdx)];
+        req.isPending = false; // Mark resolved
+
+        // Automatically grant consent
+        uint256 expiryTime = block.timestamp + _durationInSeconds;
+
+        consents[msg.sender].push(
+            Consent(
+                msg.sender,
+                req.provider,
+                req.purpose,
+                _dataHash,
+                block.timestamp,
+                expiryTime,
+                true,
+                false
+            )
+        );
+
+        audit.logConsentGranted(msg.sender, req.provider, req.purpose, expiryTime);
+    }
+
+    function rejectRequest(uint256 _requestId) external {
+        for (uint256 i = 0; i < accessRequests[msg.sender].length; i++) {
+            if (accessRequests[msg.sender][i].id == _requestId && accessRequests[msg.sender][i].isPending) {
+                accessRequests[msg.sender][i].isPending = false;
+                break;
+            }
+        }
     }
 }
