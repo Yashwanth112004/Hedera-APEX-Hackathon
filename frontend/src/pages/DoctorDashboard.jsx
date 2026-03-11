@@ -2,8 +2,9 @@ import React, { useState } from 'react';
 import { toast } from 'react-toastify';
 import { ethers } from 'ethers';
 import { fetchFromPinata, decryptData, encryptData, uploadToPinata } from '../utils/ipfsHelper';
+import { resolveWalletAddress } from '../utils/idMappingHelper';
 
-const DoctorDashboard = ({ account, consentContract, auditLogContract, accessContract, medicalRecordsContract }) => {
+const DoctorDashboard = ({ account, consentContract, auditLogContract, accessContract, medicalRecordsContract, walletMapperContract }) => {
     const [patientWallet, setPatientWallet] = useState('');
     const [requestPurpose, setRequestPurpose] = useState('');
     const [activeConsents, setActiveConsents] = useState([]);
@@ -23,8 +24,24 @@ const DoctorDashboard = ({ account, consentContract, auditLogContract, accessCon
     const [isUploading, setIsUploading] = useState(false);
 
     const checkPatientConsents = async () => {
-        if (!patientWallet || !ethers.isAddress(patientWallet)) {
-            toast.error("Valid wallet address required");
+        if (!patientWallet) {
+            toast.error("Patient Wallet Address or Short ID is required");
+            return;
+        }
+        
+        setLoading(true);
+        let targetWallet = patientWallet;
+        try {
+            targetWallet = await resolveWalletAddress(patientWallet, walletMapperContract);
+        } catch (e) {
+            toast.error(e.message);
+            setLoading(false);
+            return;
+        }
+
+        if (!ethers.isAddress(targetWallet)) {
+            toast.error("Valid wallet address or Short ID required");
+            setLoading(false);
             return;
         }
         try {
@@ -39,7 +56,7 @@ const DoctorDashboard = ({ account, consentContract, auditLogContract, accessCon
                 return;
             }
 
-            const tx = await consentContract.requestAccess(patientWallet, requestPurpose, { gasLimit: 1000000 });
+            const tx = await consentContract.requestAccess(targetWallet, requestPurpose, { gasLimit: 1000000 });
             await tx.wait();
 
             toast.success("Access Request sent to Patient!");
@@ -53,20 +70,35 @@ const DoctorDashboard = ({ account, consentContract, auditLogContract, accessCon
     };
 
     const fetchAuthorizedRecords = async () => {
-        if (!patientWallet || !ethers.isAddress(patientWallet)) {
-            toast.error("Enter Patient Wallet Address to fetch records");
+        if (!patientWallet) {
+            toast.error("Enter Patient Wallet Address or Short ID to fetch records");
+            return;
+        }
+
+        setLoading(true);
+        let targetWallet = patientWallet;
+        try {
+            targetWallet = await resolveWalletAddress(patientWallet, walletMapperContract);
+        } catch (e) {
+            toast.error(e.message);
+            setLoading(false);
+            return;
+        }
+
+        if (!ethers.isAddress(targetWallet)) {
+            toast.error("Valid wallet address or Short ID required");
+            setLoading(false);
             return;
         }
 
         try {
-            setLoading(true);
             toast.info("Fetching mapped records from Hedera...");
             // In a fully robust scenario we verify the caller has active consent first.
             // For this UI demo we assume if the doctor knows the wallet and has consent, they can fetch.
             if (medicalRecordsContract) {
                 const provider = new ethers.BrowserProvider(window.ethereum);
                 const readContract = medicalRecordsContract.connect(provider);
-                const records = await readContract.getPatientRecords(patientWallet);
+                const records = await readContract.getPatientRecords(targetWallet);
 
                 // Map to UI
                 const formatted = records.map(r => ({
@@ -143,13 +175,28 @@ const DoctorDashboard = ({ account, consentContract, auditLogContract, accessCon
 
     const handleUploadPrescription = async (e) => {
         e.preventDefault();
-        if (!rxPatientWallet || !ethers.isAddress(rxPatientWallet) || !rxPatientName || !rxMedicine || !rxDosage || !rxDuration) {
+        if (!rxPatientWallet || !rxPatientName || !rxMedicine || !rxDosage || !rxDuration) {
             toast.error("Please fill all valid prescription fields");
             return;
         }
 
+        setIsUploading(true);
+        let targetWallet = rxPatientWallet;
         try {
-            setIsUploading(true);
+            targetWallet = await resolveWalletAddress(rxPatientWallet, walletMapperContract);
+        } catch (e) {
+            toast.error(e.message);
+            setIsUploading(false);
+            return;
+        }
+
+        if (!ethers.isAddress(targetWallet)) {
+            toast.error("Valid wallet address or Short ID required");
+            setIsUploading(false);
+            return;
+        }
+
+        try {
             toast.info("Encrypting prescription payload...");
 
             const prescriptionData = {
@@ -173,12 +220,12 @@ const DoctorDashboard = ({ account, consentContract, auditLogContract, accessCon
             }
 
             toast.info("Mapping IPFS Record and inserting to Global Pharmacy Queue...");
-            const tx = await medicalRecordsContract.addPrescription(rxPatientWallet, rxPatientName, cid, { gasLimit: 1000000 });
+            const tx = await medicalRecordsContract.addPrescription(targetWallet, rxPatientName, cid, { gasLimit: 1000000 });
             await tx.wait();
 
             if (auditLogContract) {
                 const nowSecs = Math.floor(Date.now() / 1000);
-                await auditLogContract.logDataAccessed(rxPatientWallet, account, "Created Prescription", nowSecs, { gasLimit: 1000000 });
+                await auditLogContract.logDataAccessed(targetWallet, account, "Created Prescription", nowSecs, { gasLimit: 1000000 });
             }
 
             toast.success("Prescription successfully mapped to Pharmacy Queue!");

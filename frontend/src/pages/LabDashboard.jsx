@@ -1,8 +1,9 @@
 import React, { useState } from 'react';
 import { toast } from 'react-toastify';
 import { encryptData, uploadToPinata } from '../utils/ipfsHelper';
+import { resolveWalletAddress } from '../utils/idMappingHelper';
 
-const LabDashboard = ({ medicalRecordsContract }) => {
+const LabDashboard = ({ medicalRecordsContract, walletMapperContract }) => {
   const [showUploadForm, setShowUploadForm] = useState(false);
   const [uploadData, setUploadData] = useState({
     patientAddress: '',
@@ -17,10 +18,18 @@ const LabDashboard = ({ medicalRecordsContract }) => {
       return;
     }
 
+    let targetWallet = uploadData.patientAddress;
+    try {
+        targetWallet = await resolveWalletAddress(uploadData.patientAddress, walletMapperContract);
+    } catch (e) {
+        toast.error(e.message);
+        return;
+    }
+
     try {
       toast.info("Encrypting sensitive health data...");
       const encryptedPayload = encryptData({
-        patientRef: uploadData.patientAddress,
+        patientRef: targetWallet,
         type: uploadData.reportType,
         clinicalData: uploadData.reportData,
         timestamp: new Date().toISOString()
@@ -31,14 +40,14 @@ const LabDashboard = ({ medicalRecordsContract }) => {
 
       toast.info("Mapping Record to Wallet On-Chain...");
       if (medicalRecordsContract) {
-        const tx = await medicalRecordsContract.addRecord(uploadData.patientAddress, ipfsCid, uploadData.reportType, { gasLimit: 1000000 });
+        const tx = await medicalRecordsContract.addRecord(targetWallet, ipfsCid, uploadData.reportType, { gasLimit: 1000000 });
         await tx.wait();
       } else {
         toast.warning("MedicalRecords mapping failed: Contract unreachable.");
       }
 
       setRecentReports(prev => [
-        { id: prev.length + 1, patient: uploadData.patientAddress, type: uploadData.reportType, date: new Date().toISOString().split('T')[0], status: 'Completed', cid: ipfsCid },
+        { id: prev.length + 1, patient: targetWallet, type: uploadData.reportType, date: new Date().toISOString().split('T')[0], status: 'Completed', cid: ipfsCid },
         ...prev
       ]);
 

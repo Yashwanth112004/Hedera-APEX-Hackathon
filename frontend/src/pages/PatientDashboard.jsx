@@ -3,6 +3,7 @@ import { toast } from 'react-toastify';
 import { ethers } from 'ethers';
 import { QRCodeCanvas } from 'qrcode.react';
 import { fetchFromPinata, decryptData } from '../utils/ipfsHelper';
+import { generateLocalShortID } from '../utils/idMappingHelper';
 
 const PatientDashboard = ({
   account,
@@ -12,7 +13,8 @@ const PatientDashboard = ({
   onEraseConsent,
   onLoadConsents,
   consentContract, // Needed to fetch/approve requests directly
-  medicalRecordsContract
+  medicalRecordsContract,
+  walletMapperContract
 }) => {
   const [showGrantForm, setShowGrantForm] = useState(false);
   const [showQR, setShowQR] = useState(false);
@@ -29,6 +31,9 @@ const PatientDashboard = ({
   const [isDecrypting, setIsDecrypting] = useState(false);
   const [myRecords, setMyRecords] = useState([]);
   const [pendingRequests, setPendingRequests] = useState([]);
+  const [shortId, setShortId] = useState('');
+  const [isRegisteringId, setIsRegisteringId] = useState(false);
+  const [myPrescriptions, setMyPrescriptions] = useState([]);
 
   // Fetch On-Chain Data
   React.useEffect(() => {
@@ -42,6 +47,11 @@ const PatientDashboard = ({
           const recordsReadContract = medicalRecordsContract.connect(provider);
           const records = await recordsReadContract.getPatientRecords(account);
           setMyRecords(records);
+
+          // Fetch Global Prescription Queue and filter by patient wallet
+          const allPrescriptions = await recordsReadContract.getPendingPrescriptions();
+          const filteredRx = allPrescriptions.filter(rx => rx.patient.toLowerCase() === account.toLowerCase());
+          setMyPrescriptions(filteredRx);
         } catch { console.error("Could not fetch MedicalRecords"); }
       }
       if (consentContract) {
@@ -51,10 +61,38 @@ const PatientDashboard = ({
           setPendingRequests(requests);
         } catch { console.error("Could not fetch Pending Requests"); }
       }
+      if (walletMapperContract) {
+        try {
+          const mapperReadContract = walletMapperContract.connect(provider);
+          const id = await mapperReadContract.getShortIDFromWallet(account);
+          if (id) setShortId(id);
+        } catch { console.error("Could not fetch Short ID"); }
+      }
     };
 
     loadPatientData();
-  }, [medicalRecordsContract, consentContract, account]);
+  }, [medicalRecordsContract, consentContract, walletMapperContract, account]);
+
+  const handleRegisterShortId = async () => {
+    if (!walletMapperContract || !account) return;
+    try {
+      setIsRegisteringId(true);
+      const generatedId = generateLocalShortID(account);
+      if (!generatedId) throw new Error("Could not generate ID");
+      
+      const tx = await walletMapperContract.registerShortID(generatedId, { gasLimit: 500000 });
+      toast.info(`Registering Short ID: ${generatedId}... Confirm in Wallet`);
+      await tx.wait();
+      
+      setShortId(generatedId);
+      toast.success("Short ID Registered Successfully!");
+    } catch (err) {
+      console.error(err);
+      toast.error("Failed to register Short ID. It might be taken.");
+    } finally {
+      setIsRegisteringId(false);
+    }
+  };
 
   const handleApproveRequest = async (requestId) => {
     if (!consentContract) return;
@@ -149,15 +187,33 @@ const PatientDashboard = ({
   // Updated icons to use emojis more fitting the vibrant theme or generic texts
   const dashboardCards = [
     { title: 'My Health Records', value: myRecords.length, icon: '📋', color: 'var(--primary-color)' },
+    { title: 'Active Prescriptions', value: myPrescriptions.length, icon: '💊', color: '#14b8a6' },
     { title: 'Active Consents', value: consents.filter(c => c.isActive).length, icon: '✅', color: 'var(--success-color)' },
-    { title: 'Pending Requests', value: pendingRequests.length, icon: '⏳', color: 'var(--warning-color)' },
-    { title: 'Audit Logs', value: consents.length, icon: '🔍', color: 'var(--accent-color)' }
+    { title: 'Pending Requests', value: pendingRequests.length, icon: '⏳', color: 'var(--warning-color)' }
   ];
 
   return (
     <div className="dashboard animate-fade-in">
       <div className="dashboard-header">
-        <h2>Patient Dashboard</h2>
+        <div>
+          <h2 style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+            Patient Dashboard
+            {shortId ? (
+              <span style={{ fontSize: '1rem', background: 'var(--primary-color)', padding: '0.2rem 0.8rem', borderRadius: '12px', color: '#fff' }}>
+                ID: {shortId}
+              </span>
+            ) : (
+              <button 
+                className="secondary-btn" 
+                style={{ fontSize: '0.8rem', padding: '0.3rem 0.8rem' }}
+                onClick={handleRegisterShortId}
+                disabled={isRegisteringId}
+              >
+                {isRegisteringId ? "Registering..." : "Create Short ID"}
+              </button>
+            )}
+          </h2>
+        </div>
         <div className="dashboard-actions">
           <button
             className="primary-btn"
@@ -265,6 +321,64 @@ const PatientDashboard = ({
             </tbody>
           </table>
         </div>
+      </div>
+
+      <div className="dashboard-section glass-panel" style={{ marginTop: '2rem' }}>
+        <h3>Active Prescriptions</h3>
+        <p style={{ fontSize: '0.9rem', color: 'var(--text-secondary)', marginBottom: '1.5rem' }}>
+          Medications prescribed by your doctors pending dispensation at a pharmacy.
+        </p>
+
+        {myPrescriptions.length === 0 ? (
+          <div style={{ padding: '2rem', textAlign: 'center', color: 'var(--text-secondary)' }}>
+            No active prescriptions found for your wallet.
+          </div>
+        ) : (
+          <div className="table-container">
+            <table className="data-table">
+              <thead>
+                <tr>
+                  <th>Prescription ID</th>
+                  <th>Status</th>
+                  <th>IPFS CID</th>
+                  <th>Action</th>
+                </tr>
+              </thead>
+              <tbody>
+                {myPrescriptions.map((rx, i) => (
+                  <tr key={i}>
+                    <td><span style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}><span>💊</span>#{rx.recordId.toString()}</span></td>
+                    <td><span className="status-badge success">{rx.isDispensed ? 'Dispensed' : 'Pending'}</span></td>
+                    <td>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                        <span style={{ fontFamily: 'monospace', color: 'var(--text-secondary)', fontSize: '0.9rem' }}>
+                          {rx.cid.slice(0, 10)}...{rx.cid.slice(-10)}
+                        </span>
+                        <button
+                          onClick={() => { navigator.clipboard.writeText(rx.cid); toast.success("CID copied to clipboard!"); }}
+                          style={{ background: 'transparent', border: 'none', cursor: 'pointer', fontSize: '1.2rem', padding: '0' }}
+                          title="Copy CID"
+                        >
+                          📋
+                        </button>
+                      </div>
+                    </td>
+                    <td>
+                      <button
+                        className="primary-btn"
+                        style={{ padding: '0.5rem 1rem', fontSize: '0.85rem' }}
+                        onClick={() => handleDecryptRecord(rx.cid)}
+                        disabled={isDecrypting && ipfsCid === rx.cid}
+                      >
+                        {isDecrypting && ipfsCid === rx.cid ? "Decrypting..." : "Decrypt Data"}
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
       </div>
 
       <div className="dashboard-section glass-panel" style={{ marginTop: '2rem' }}>

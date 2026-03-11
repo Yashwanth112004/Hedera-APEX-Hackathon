@@ -1,18 +1,35 @@
 import React, { useState } from 'react';
 import { toast } from 'react-toastify';
 import { ethers } from 'ethers';
+import { resolveWalletAddress } from '../utils/idMappingHelper';
 
-const InsuranceDashboard = ({ account, consentContract, auditLogContract, accessContract }) => {
+const InsuranceDashboard = ({ account, consentContract, auditLogContract, accessContract, walletMapperContract }) => {
     const [patientWallet, setPatientWallet] = useState('');
     const [claims, setClaims] = useState([]);
     const [loading, setLoading] = useState(false);
 
     const verifyMedicalEvents = async () => {
-        if (!ethers.isAddress(patientWallet)) {
-            toast.error("Invalid policy holder address");
+        if (!patientWallet) {
+            toast.error("Policy holder address or Short ID required");
             return;
         }
+        
         setLoading(true);
+        let targetWallet = patientWallet;
+        try {
+            targetWallet = await resolveWalletAddress(patientWallet, walletMapperContract);
+        } catch (e) {
+            toast.error(e.message);
+            setLoading(false);
+            return;
+        }
+
+        if (!ethers.isAddress(targetWallet)) {
+            toast.error("Valid wallet address or Short ID required");
+            setLoading(false);
+            return;
+        }
+
         try {
             // In a real DPDP flow, the insurer queries the AuditLog 
             // to find a 'Medication Dispensation' or 'Doctor Visit' event
@@ -30,9 +47,11 @@ const InsuranceDashboard = ({ account, consentContract, auditLogContract, access
 
     const processPayout = async (claimId) => {
         try {
+            let targetWallet = await resolveWalletAddress(patientWallet, walletMapperContract).catch(() => patientWallet);
+
             if (auditLogContract) {
                 const nowSecs = Math.floor(Date.now() / 1000);
-                await auditLogContract.logDataAccessed(patientWallet, account, "Insurance Payout Verification", nowSecs, { gasLimit: 1000000 });
+                await auditLogContract.logDataAccessed(targetWallet, account, "Insurance Payout Verification", nowSecs, { gasLimit: 1000000 });
             }
             toast.success(`Claim ${claimId} approved. Disbursement initiated via smart contract.`);
             setClaims(claims.map(c => c.id === claimId ? { ...c, status: 'Processing Payout' } : c));

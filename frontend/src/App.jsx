@@ -3,6 +3,7 @@ import { ethers } from "ethers";
 import { toast, ToastContainer } from "react-toastify";
 import "react-toastify/dist/ReactToastify.css";
 import "./App.css";
+import { WALLET_MAPPER_ADDRESS, WALLET_MAPPER_ABI } from "./utils/idMappingHelper";
 
 import Navbar from "./components/Navbar";
 import Sidebar from "./components/Sidebar";
@@ -102,6 +103,7 @@ function App() {
   const [accessContract, setAccess] = useState(null);
   const [auditLogContract, setAuditLog] = useState(null);
   const [medicalRecordsContract, setMedicalRecords] = useState(null);
+  const [walletMapperContract, setWalletMapper] = useState(null);
 
   const [consents, setConsents] = useState([]);
 
@@ -135,6 +137,7 @@ function App() {
       setAccess(new ethers.Contract(ACCESS_MANAGER, accessABI, signer));
       setAuditLog(new ethers.Contract(AUDIT_LOG, auditLogABI, signer));
       setMedicalRecords(new ethers.Contract(MEDICAL_RECORDS, medicalRecordsABI, signer));
+      setWalletMapper(new ethers.Contract(WALLET_MAPPER_ADDRESS, WALLET_MAPPER_ABI, signer));
 
       const rolesToSelect = ["Patient"];
       try {
@@ -300,7 +303,7 @@ function App() {
   }, [consentContract]);
 
   const renderDashboard = () => {
-    const commonProps = { account, consentContract, registryContract, auditLogContract, accessContract, medicalRecordsContract };
+    const commonProps = { account, consentContract, registryContract, auditLogContract, accessContract, medicalRecordsContract, walletMapperContract };
     const r = role?.toLowerCase();
     switch (r) {
       case "hospital": return <HospitalDashboard {...commonProps} onRegisterHospital={registerHospital} onAccessPatientData={accessPatientData} />;
