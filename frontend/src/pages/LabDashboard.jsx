@@ -3,18 +3,78 @@ import { toast } from 'react-toastify';
 import { encryptData, uploadToPinata } from '../utils/ipfsHelper';
 import { resolveWalletAddress } from '../utils/idMappingHelper';
 
+const labTestRegistry = {
+  "Blood Tests": [
+    "Complete Blood Count (CBC)", "Hemoglobin", "Hematocrit", "Red Blood Cell Count",
+    "White Blood Cell Count", "Platelet Count", "Mean Corpuscular Volume (MCV)",
+    "Mean Corpuscular Hemoglobin (MCH)", "Mean Corpuscular Hemoglobin Concentration (MCHC)",
+    "Red Cell Distribution Width (RDW)"
+  ],
+  "Metabolic Panel": [
+    "Basic Metabolic Panel (BMP)", "Comprehensive Metabolic Panel (CMP)", "Blood Glucose",
+    "Blood Urea Nitrogen (BUN)", "Creatinine", "Electrolytes Panel", "Sodium", "Potassium",
+    "Chloride", "Bicarbonate", "Calcium", "Magnesium", "Phosphate"
+  ],
+  "Lipid Profile": [
+    "Total Cholesterol", "HDL Cholesterol", "LDL Cholesterol", "Triglycerides", "VLDL", "Non-HDL Cholesterol"
+  ],
+  "Liver Function Tests": [
+    "ALT (Alanine Aminotransferase)", "AST (Aspartate Aminotransferase)", "ALP (Alkaline Phosphatase)",
+    "Bilirubin Total", "Bilirubin Direct", "Albumin", "Total Protein", "Gamma GT"
+  ],
+  "Kidney Function Tests": [
+    "Creatinine", "Urea", "Glomerular Filtration Rate (GFR)", "Uric Acid"
+  ],
+  "Coagulation Tests": [
+    "Prothrombin Time (PT)", "INR", "Activated Partial Hover Time (aPTT)", "D-Dimer", "Fibrinogen"
+  ],
+  "Urine Tests": [
+    "Urinalysis", "Urine Culture", "Urine Protein", "Urine Creatinine", "Urine Glucose",
+    "Urine Ketones", "Urine Microscopy", "Urine Pregnancy Test"
+  ],
+  "Microbiology Tests": [
+    "Blood Culture", "Urine Culture", "Sputum Culture", "Stool Culture", "Throat Swab Culture",
+    "COVID-19 PCR", "Influenza PCR", "HIV Test", "Hepatitis B Test", "Hepatitis C Test",
+    "Tuberculosis Test", "Malaria Test", "Dengue Test", "Typhoid Test"
+  ],
+  "Imaging / Radiology": [
+    "X-Ray", "CT Scan", "MRI Scan", "Ultrasound", "PET Scan", "Mammography",
+    "Bone Density Scan", "Angiography", "Fluoroscopy"
+  ],
+  "Pathology / Biopsy": [
+    "Biopsy Report", "Histopathology", "Cytology", "Pap Smear", "Tumor Marker Test"
+  ],
+  "Genetic Tests": [
+    "DNA Sequencing", "BRCA Genetic Test", "Carrier Screening", "Prenatal Genetic Testing", "Pharmacogenomics Testing"
+  ],
+  "Cardiology Tests": [
+    "ECG / EKG", "Echocardiogram", "Holter Monitor Test", "Stress Test", "Cardiac Enzyme Test", "Troponin Test", "BNP Test"
+  ],
+  "Endocrinology Tests": [
+    "Thyroid Panel", "TSH", "T3", "T4", "HbA1c", "Insulin Test", "Cortisol Test", "Growth Hormone Test", "Vitamin D Test", "Vitamin B12 Test"
+  ],
+  "Toxicology Tests": [
+    "Drug Screening", "Alcohol Level Test", "Heavy Metal Test", "Lead Test", "Arsenic Test", "Mercury Test"
+  ],
+  "Allergy & Immunology": [
+    "Allergy Panel", "IgE Test", "Autoimmune Panel", "ANA Test", "CRP Test", "ESR Test", "Rheumatoid Factor"
+  ]
+};
+
 const LabDashboard = ({ medicalRecordsContract, walletMapperContract }) => {
   const [showUploadForm, setShowUploadForm] = useState(false);
   const [uploadData, setUploadData] = useState({
     patientAddress: '',
-    reportType: '',
+    category: '',
+    testType: '',
     reportData: ''
   });
+  const [selectedFile, setSelectedFile] = useState(null);
 
   const handleUploadReport = async (e) => {
     e.preventDefault();
-    if (!uploadData.patientAddress || !uploadData.reportType || !uploadData.reportData) {
-      toast.error('Please fill all fields');
+    if (!uploadData.patientAddress || !uploadData.category || !uploadData.testType || !uploadData.reportData) {
+      toast.error('Please fill all required fields');
       return;
     }
 
@@ -27,32 +87,47 @@ const LabDashboard = ({ medicalRecordsContract, walletMapperContract }) => {
     }
 
     try {
+      let fileDataBase64 = null;
+      if (selectedFile) {
+        toast.info("Reading file content...");
+        fileDataBase64 = await new Promise((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = () => resolve(reader.result);
+          reader.onerror = reject;
+          reader.readAsDataURL(selectedFile);
+        });
+      }
+
       toast.info("Encrypting sensitive health data...");
       const encryptedPayload = encryptData({
         patientRef: targetWallet,
-        type: uploadData.reportType,
+        category: uploadData.category,
+        type: uploadData.testType,
         clinicalData: uploadData.reportData,
+        fileData: fileDataBase64,
+        fileName: selectedFile ? selectedFile.name : null,
         timestamp: new Date().toISOString()
       });
 
       toast.info("Uploading cipher text to IPFS network...");
-      const ipfsCid = await uploadToPinata(encryptedPayload, `${uploadData.reportType} - ${uploadData.patientAddress.slice(0, 6)}`);
+      const ipfsCid = await uploadToPinata(encryptedPayload, `${uploadData.testType} - ${uploadData.patientAddress.slice(0, 6)}`);
 
       toast.info("Mapping Record to Wallet On-Chain...");
       if (medicalRecordsContract) {
-        const tx = await medicalRecordsContract.addRecord(targetWallet, ipfsCid, uploadData.reportType, { gasLimit: 1000000 });
+        const tx = await medicalRecordsContract.addRecord(targetWallet, ipfsCid, uploadData.testType, { gasLimit: 1000000 });
         await tx.wait();
       } else {
         toast.warning("MedicalRecords mapping failed: Contract unreachable.");
       }
 
       setRecentReports(prev => [
-        { id: prev.length + 1, patient: targetWallet, type: uploadData.reportType, date: new Date().toISOString().split('T')[0], status: 'Completed', cid: ipfsCid },
+        { id: prev.length + 1, patient: targetWallet, type: uploadData.testType, category: uploadData.category, date: new Date().toISOString().split('T')[0], status: 'Completed', cid: ipfsCid },
         ...prev
       ]);
 
       setShowUploadForm(false);
-      setUploadData({ patientAddress: '', reportType: '', reportData: '' });
+      setUploadData({ patientAddress: '', category: '', testType: '', reportData: '' });
+      setSelectedFile(null);
       toast.success(`Securely Mapped On-Chain! CID: ${ipfsCid.slice(0, 8)}...`);
     } catch (err) {
       console.error(err);
@@ -169,19 +244,30 @@ const LabDashboard = ({ medicalRecordsContract, walletMapperContract }) => {
                 />
               </div>
               <div className="form-group">
-                <label>Report Type *</label>
+                <label>Test Category *</label>
                 <select
-                  value={uploadData.reportType}
-                  onChange={(e) => setUploadData({ ...uploadData, reportType: e.target.value })}
+                  value={uploadData.category}
+                  onChange={(e) => setUploadData({ ...uploadData, category: e.target.value, testType: '' })}
                   required
                 >
-                  <option value="">Select report type</option>
-                  <option value="blood_test">Blood Test</option>
-                  <option value="xray">X-Ray</option>
-                  <option value="mri">MRI Scan</option>
-                  <option value="ct_scan">CT Scan</option>
-                  <option value="ultrasound">Ultrasound</option>
-                  <option value="pathology">Pathology Report</option>
+                  <option value="">Select category</option>
+                  {Object.keys(labTestRegistry).map(cat => (
+                    <option key={cat} value={cat}>{cat}</option>
+                  ))}
+                </select>
+              </div>
+              <div className="form-group">
+                <label>Test Type *</label>
+                <select
+                  value={uploadData.testType}
+                  onChange={(e) => setUploadData({ ...uploadData, testType: e.target.value })}
+                  required
+                  disabled={!uploadData.category}
+                >
+                  <option value="">Select test type</option>
+                  {uploadData.category && labTestRegistry[uploadData.category].map(type => (
+                    <option key={type} value={type}>{type}</option>
+                  ))}
                 </select>
               </div>
               <div className="form-group">
@@ -196,7 +282,12 @@ const LabDashboard = ({ medicalRecordsContract, walletMapperContract }) => {
               </div>
               <div className="form-group">
                 <label>Upload File</label>
-                <input type="file" accept=".pdf,.jpg,.png,.doc,.docx" />
+                <input 
+                  type="file" 
+                  accept=".pdf,.jpg,.png,.doc,.docx" 
+                  onChange={(e) => setSelectedFile(e.target.files[0])}
+                />
+                {selectedFile && <span style={{ fontSize: '0.8rem', color: 'var(--success-color)' }}>{selectedFile.name} selected</span>}
               </div>
               <div className="modal-actions">
                 <button type="submit" className="primary-btn">Upload Report</button>
