@@ -54,10 +54,10 @@ const HospitalDashboard = ({
   };
 
   const dashboardCards = [
-    { title: 'Patient Requests', value: 0, icon: '👥', color: 'var(--secondary-color)' },
-    { title: 'Uploaded Records', value: 0, icon: '📤', color: 'var(--success-color)' },
-    { title: 'Approved Consents', value: 0, icon: '✅', color: 'var(--primary-color)' },
-    { title: 'Access Logs', value: 0, icon: '🔍', color: 'var(--accent-color)' }
+    { title: 'Patient Requests', value: 0, icon: '👥', color: 'var(--medical-secondary)' },
+    { title: 'Uploaded Records', value: 0, icon: '📤', color: 'var(--status-approved)' },
+    { title: 'Approved Consents', value: 0, icon: '✅', color: 'var(--medical-primary)' },
+    { title: 'Access Logs', value: 0, icon: '🔍', color: 'var(--medical-aqua)' }
   ];
 
   return (
@@ -83,7 +83,7 @@ const HospitalDashboard = ({
       <div className="dashboard-cards">
         {dashboardCards.map((card, index) => (
           <div key={index} className="dashboard-card glass-panel" style={{ color: card.color }}>
-            <div className="card-icon" style={{ backgroundColor: `rgba(255,255,255,0.05)`, color: card.color }}>
+            <div className="card-icon" style={{ backgroundColor: `var(--panel-bg)`, color: card.color, boxShadow: 'var(--shadow-3d)' }}>
               {card.icon}
             </div>
             <div className="card-content">

@@ -54,27 +54,27 @@ const RegulatorDashboard = () => {
   const [violations] = useState(mockViolations);
 
   const dashboardCards = [
-    { title: 'Total Consents', value: 1247, icon: '📋', color: 'var(--primary-color)' },
-    { title: 'Active Consents', value: 892, icon: '✅', color: 'var(--success-color)' },
-    { title: 'Audit Logs', value: auditLogs.length, icon: '🔍', color: 'var(--accent-color)' },
-    { title: 'Violations', value: violations.length, icon: '⚠️', color: 'var(--danger-color)' }
+    { title: 'Total Consents', value: 1247, icon: '📋', color: 'var(--medical-primary)' },
+    { title: 'Active Consents', value: 892, icon: '✅', color: 'var(--status-approved)' },
+    { title: 'Audit Logs', value: auditLogs.length, icon: '🔍', color: 'var(--medical-aqua)' },
+    { title: 'Violations', value: violations.length, icon: '⚠️', color: 'var(--status-rejected)' }
   ];
 
   const getSeverityColor = (severity) => {
     switch (severity) {
-      case 'High': return '#EF4444';
-      case 'Medium': return '#F59E0B';
-      case 'Low': return '#22C55E';
-      default: return '#6B7280';
+      case 'High': return 'var(--status-rejected)';
+      case 'Medium': return 'var(--status-pending)';
+      case 'Low': return 'var(--status-approved)';
+      default: return 'var(--text-secondary)';
     }
   };
 
   const getStatusColor = (status) => {
     switch (status) {
-      case 'Compliant': return '#22C55E';
-      case 'Under Investigation': return '#F59E0B';
-      case 'Resolved': return '#2563EB';
-      default: return '#6B7280';
+      case 'Compliant': return 'var(--status-approved)';
+      case 'Under Investigation': return 'var(--status-pending)';
+      case 'Resolved': return 'var(--status-info)';
+      default: return 'var(--text-secondary)';
     }
   };
 
@@ -91,7 +91,7 @@ const RegulatorDashboard = () => {
       <div className="dashboard-cards">
         {dashboardCards.map((card, index) => (
           <div key={index} className="dashboard-card glass-panel" style={{ color: card.color }}>
-            <div className="card-icon" style={{ backgroundColor: `rgba(255,255,255,0.05)`, color: card.color }}>
+            <div className="card-icon" style={{ backgroundColor: `var(--panel-bg)`, color: card.color, boxShadow: 'var(--shadow-3d)' }}>
               {card.icon}
             </div>
             <div className="card-content">

@@ -87,7 +87,7 @@ const InsuranceDashboard = ({ account, consentContract, auditLogContract, access
 
                 <div className="glass-panel" style={{ padding: '2rem' }}>
                     <h3>Privacy Principle</h3>
-                    <p style={{ fontSize: '0.9rem', color: 'var(--text-secondary)', borderLeft: '4px solid var(--primary-color)', paddingLeft: '1rem', marginTop: '1rem' }}>
+                    <p style={{ fontSize: '0.9rem', color: 'var(--text-secondary)', borderLeft: '4px solid var(--medical-primary)', paddingLeft: '1rem', marginTop: '1rem' }}>
                         "Data minimization: Insurer only receives confirmation of medical events, not the granular clinical diagnosis, unless explicitly consented."
                     </p>
                 </div>

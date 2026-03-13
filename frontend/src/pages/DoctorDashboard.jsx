@@ -289,7 +289,7 @@ const DoctorDashboard = ({ account, consentContract, auditLogContract, accessCon
             </div>
 
             {/* Prescription Upload Panel */}
-            <div className="dashboard-section glass-panel" style={{ marginTop: '2rem', padding: '2rem', borderLeft: '4px solid var(--primary-color)' }}>
+            <div className="dashboard-section glass-panel" style={{ marginTop: '2rem', padding: '2rem', borderLeft: '4px solid var(--medical-primary)' }}>
                 <h3>Issue Prescription to Global Queue</h3>
                 <p style={{ fontSize: '0.9rem', color: 'var(--text-secondary)', marginBottom: '1.5rem' }}>
                     Generate an encrypted IPFS prescription cipher and immutably map it to the patient's wallet into the global Pharmacy queue.
@@ -326,7 +326,7 @@ const DoctorDashboard = ({ account, consentContract, auditLogContract, accessCon
             </div>
 
             {/* IPFS Decryption Engine */}
-            <div className="dashboard-section glass-panel" style={{ marginTop: '2rem', padding: '2rem', borderLeft: '4px solid var(--accent-color)' }}>
+            <div className="dashboard-section glass-panel" style={{ marginTop: '2rem', padding: '2rem', borderLeft: '4px solid var(--medical-aqua)' }}>
                 <h3>IPFS Decryption Engine</h3>
                 <p style={{ fontSize: '0.9rem', color: 'var(--text-secondary)', marginBottom: '1.5rem' }}>
                     Fetch an encrypted patient record from the decentralized IPFS network and decrypt it securely in your local browser environment.
@@ -346,8 +346,8 @@ const DoctorDashboard = ({ account, consentContract, auditLogContract, accessCon
                 </div>
 
                 {decryptedRecord && (
-                    <div style={{ marginTop: '2rem', padding: '1.5rem', backgroundColor: 'rgba(0,0,0,0.2)', borderRadius: '12px', border: '1px solid rgba(255,255,255,0.05)' }}>
-                        <h4 style={{ color: '#22C55E', marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                    <div style={{ marginTop: '2rem', padding: '1.5rem', backgroundColor: 'var(--panel-bg)', borderRadius: '12px', border: '1px solid var(--glass-border)', boxShadow: 'var(--shadow-3d)' }}>
+                        <h4 style={{ color: 'var(--status-approved)', marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                             <span>🔓</span> Decrypted Health Record
                         </h4>
                         <div style={{ display: 'grid', gridTemplateColumns: '120px 1fr', gap: '1rem', color: 'var(--text-secondary)' }}>

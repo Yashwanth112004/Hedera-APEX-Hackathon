@@ -136,10 +136,10 @@ const LabDashboard = ({ medicalRecordsContract, walletMapperContract }) => {
   };
 
   const dashboardCards = [
-    { title: 'Uploaded Reports', value: 0, icon: '📤', color: '#22C55E' },
-    { title: 'Authorized Records', value: 0, icon: '🔐', color: '#2563EB' },
-    { title: 'Pending Uploads', value: 0, icon: '⏳', color: '#F59E0B' },
-    { title: 'Access History', value: 0, icon: '🔍', color: '#8B5CF6' }
+    { title: 'Uploaded Reports', value: 0, icon: '📤', color: 'var(--status-approved)' },
+    { title: 'Authorized Records', value: 0, icon: '🔐', color: 'var(--status-info)' },
+    { title: 'Pending Uploads', value: 0, icon: '⏳', color: 'var(--status-pending)' },
+    { title: 'Access History', value: 0, icon: '🔍', color: 'var(--medical-secondary)' }
   ];
 
   const [recentReports, setRecentReports] = useState([]);
@@ -161,7 +161,7 @@ const LabDashboard = ({ medicalRecordsContract, walletMapperContract }) => {
       <div className="dashboard-cards">
         {dashboardCards.map((card, index) => (
           <div key={index} className="dashboard-card" style={{ borderColor: card.color }}>
-            <div className="card-icon" style={{ backgroundColor: card.color + '20', color: card.color }}>
+            <div className="card-icon" style={{ backgroundColor: 'var(--panel-bg)', color: card.color, boxShadow: 'var(--shadow-3d)' }}>
               {card.icon}
             </div>
             <div className="card-content">
@@ -287,7 +287,7 @@ const LabDashboard = ({ medicalRecordsContract, walletMapperContract }) => {
                   accept=".pdf,.jpg,.png,.doc,.docx" 
                   onChange={(e) => setSelectedFile(e.target.files[0])}
                 />
-                {selectedFile && <span style={{ fontSize: '0.8rem', color: 'var(--success-color)' }}>{selectedFile.name} selected</span>}
+                {selectedFile && <span style={{ fontSize: '0.8rem', color: 'var(--status-approved)' }}>{selectedFile.name} selected</span>}
               </div>
               <div className="modal-actions">
                 <button type="submit" className="primary-btn">Upload Report</button>

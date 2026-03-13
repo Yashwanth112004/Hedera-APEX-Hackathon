@@ -60,11 +60,11 @@ const AuditLogs = ({ auditLogContract }) => {
     return `${address.slice(0, 6)}...${address.slice(-4)}`;
   };
 
-  const statusColors = { Success: '#22C55E', Failed: '#EF4444' };
+  const statusColors = { Success: 'var(--status-approved)', Failed: 'var(--status-rejected)' };
 
   const getActionColor = (action) => {
-    if (action.includes('Consent')) return 'var(--primary-color)';
-    if (action.includes('Access')) return 'var(--accent-color)';
+    if (action.includes('Consent')) return 'var(--medical-primary)';
+    if (action.includes('Access')) return 'var(--medical-aqua)';
     return 'var(--text-secondary)';
   };
 
@@ -147,7 +147,7 @@ const AuditLogs = ({ auditLogContract }) => {
                     </td>
                     <td>{log.purpose}</td>
                     <td>{formatDate(log.timestamp)}</td>
-                    <td style={{ color: '#22C55E' }}>✔ Verified</td>
+                    <td style={{ color: 'var(--status-approved)' }}>✔ Verified</td>
                   </tr>
                 ))
               )}

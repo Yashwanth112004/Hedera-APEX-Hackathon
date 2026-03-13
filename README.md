@@ -1,7 +1,6 @@
 # 🏥 Hedera APEX Healthcare Consent & Record System (DPDP Act 2023 Compliant)
 
 [![Built with Hedera](https://img.shields.io/badge/Built%20with-Hedera-blue)](https://hedera.com/)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Frontend](https://img.shields.io/badge/Frontend-React.js-61DAFB?logo=react&logoColor=white)](https://react.dev)
 [![Storage](https://img.shields.io/badge/Storage-IPFS%20%7C%20Pinata-41B883?logo=ipfs&logoColor=white)](https://pinata.cloud/)
 
@@ -113,6 +112,3 @@ Open [http://localhost:5173](http://localhost:5173) in your browser. Connect Met
 Detailed feature breakdowns can be found in our internal `walkthrough.md` artifacts.
 
 ---
-
-## ⚖️ License
-This project is licensed under the MIT License - see the LICENSE file for details. Built for the Hedera APEX Hackathon.

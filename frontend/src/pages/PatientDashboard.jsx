@@ -186,10 +186,10 @@ const PatientDashboard = ({
 
   // Updated icons to use emojis more fitting the vibrant theme or generic texts
   const dashboardCards = [
-    { title: 'My Health Records', value: myRecords.length, icon: '📋', color: 'var(--primary-color)' },
-    { title: 'Active Prescriptions', value: myPrescriptions.length, icon: '💊', color: '#14b8a6' },
-    { title: 'Active Consents', value: consents.filter(c => c.isActive).length, icon: '✅', color: 'var(--success-color)' },
-    { title: 'Pending Requests', value: pendingRequests.length, icon: '⏳', color: 'var(--warning-color)' }
+    { title: 'My Health Records', value: myRecords.length, icon: '📋', color: 'var(--medical-primary)' },
+    { title: 'Active Prescriptions', value: myPrescriptions.length, icon: '💊', color: 'var(--medical-teal)' },
+    { title: 'Active Consents', value: consents.filter(c => c.isActive).length, icon: '✅', color: 'var(--status-approved)' },
+    { title: 'Pending Requests', value: pendingRequests.length, icon: '⏳', color: 'var(--status-pending)' }
   ];
 
   return (
@@ -199,7 +199,7 @@ const PatientDashboard = ({
           <h2 style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
             Patient Dashboard
             {shortId ? (
-              <span style={{ fontSize: '1rem', background: 'var(--primary-color)', padding: '0.2rem 0.8rem', borderRadius: '12px', color: '#fff' }}>
+              <span style={{ fontSize: '1rem', background: 'var(--grad-medical)', padding: '0.2rem 0.8rem', borderRadius: '12px', color: '#fff', boxShadow: 'var(--shadow-3d)' }}>
                 ID: {shortId}
               </span>
             ) : (
@@ -257,7 +257,7 @@ const PatientDashboard = ({
         ) : (
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '1rem', marginTop: '1rem' }}>
             {pendingRequests.map(req => (
-              <div key={req.id.toString()} style={{ padding: '1.5rem', border: '1px solid var(--accent-color)', borderRadius: '12px', background: 'rgba(0,0,0,0.2)' }}>
+              <div key={req.id.toString()} style={{ padding: '1.5rem', border: '1px solid var(--medical-aqua)', borderRadius: '12px', background: 'var(--panel-bg)', boxShadow: 'var(--shadow-3d)' }}>
                 <div style={{ fontSize: '0.9rem', color: 'var(--text-secondary)', marginBottom: '0.5rem' }}>From Fiduciary: {req.provider.slice(0, 6)}...{req.provider.slice(-4)}</div>
                 <h4 style={{ marginBottom: '1rem' }}>{req.purpose}</h4>
                 <div style={{ display: 'flex', gap: '0.5rem' }}>
@@ -451,14 +451,14 @@ const PatientDashboard = ({
         </div>
 
         {decryptedRecord && (
-          <div style={{ marginTop: '2rem', padding: '1.5rem', backgroundColor: 'rgba(0,0,0,0.2)', borderRadius: '12px', border: '1px solid rgba(255,255,255,0.05)' }}>
-            <h4 style={{ color: '#22C55E', marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+          <div style={{ marginTop: '2rem', padding: '1.5rem', backgroundColor: 'var(--panel-bg)', borderRadius: '12px', border: '1px solid var(--glass-border)', boxShadow: 'var(--shadow-3d)' }}>
+            <h4 style={{ color: 'var(--status-approved)', marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
               <span>🔓</span> Secure Personal Health Record
             </h4>
             <div style={{ display: 'grid', gridTemplateColumns: '120px 1fr', gap: '1rem', color: 'var(--text-secondary)' }}>
               <strong>Facility Ref:</strong> <span>{decryptedRecord.type} Provider</span>
               <strong>Record Type:</strong> <span>{decryptedRecord.type}</span>
-              <strong>Clinical Data:</strong> <span style={{ color: 'var(--text-color)', lineHeight: '1.5' }}>{decryptedRecord.clinicalData}</span>
+              <strong>Clinical Data:</strong> <span style={{ color: 'var(--text-primary)', lineHeight: '1.5' }}>{decryptedRecord.clinicalData}</span>
             </div>
           </div>
         )}

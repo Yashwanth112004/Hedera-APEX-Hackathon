@@ -93,6 +93,21 @@ function App() {
   const [authenticated, setAuthenticated] = useState(false);
   const [showContextSelection, setShowContextSelection] = useState(false);
   const [availableRoles, setAvailableRoles] = useState(["Patient"]);
+  const [theme, setTheme] = useState(localStorage.getItem('app-theme') || 'light');
+
+  // THEME MANAGEMENT
+  useEffect(() => {
+    // Apply theme to document element for global CSS variables
+    document.documentElement.setAttribute('data-theme', theme);
+    // Also apply to body for some legacy styles
+    document.body.className = theme === 'dark' ? 'dark-mode' : '';
+    localStorage.setItem('app-theme', theme);
+  }, [theme]);
+
+  const toggleTheme = () => {
+    const nextTheme = theme === 'light' ? 'dark' : 'light';
+    setTheme(nextTheme);
+  };
 
   const [reqOrgName, setReqOrgName] = useState("");
   const [reqWallet, setReqWallet] = useState("");
@@ -305,6 +320,7 @@ function App() {
   const renderDashboard = () => {
     const commonProps = { account, consentContract, registryContract, auditLogContract, accessContract, medicalRecordsContract, walletMapperContract };
     const r = role?.toLowerCase();
+
     switch (r) {
       case "hospital": return <HospitalDashboard {...commonProps} onRegisterHospital={registerHospital} onAccessPatientData={accessPatientData} />;
       case "lab": return <LabDashboard {...commonProps} />;
@@ -327,10 +343,12 @@ function App() {
             onConnect={connectWallet}
             onRegister={() => setShowRoleForm(true)}
             onAdmin={connectAdmin}
+            theme={theme}
+            onToggleTheme={toggleTheme}
           />
           <div className="landing-page" style={{ padding: '4rem 2rem', maxWidth: '1200px', margin: '0 auto' }}>
             <div className="landing-header animate-fade-in" style={{ textAlign: 'center', marginBottom: '4rem' }}>
-              <h1 className="app-title" style={{ fontSize: '3.5rem', marginBottom: '1rem', background: 'linear-gradient(45deg, var(--primary-color), #a855f7)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>
+              <h1 className="app-title" style={{ fontSize: '3.5rem', marginBottom: '1rem', background: 'var(--grad-primary)', WebkitBackgroundClip: 'text', backgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>
                 Decentralized Health Consent
               </h1>
               <p className="app-description" style={{ color: 'var(--text-secondary)', fontSize: '1.2rem', maxWidth: '800px', margin: '0 auto', lineHeight: '1.6' }}>
@@ -339,17 +357,17 @@ function App() {
             </div>
 
             <div className="dpdp-features-grid animate-fade-in" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '2rem', animationDelay: '0.2s' }}>
-              <div className="feature-card glass-panel" style={{ padding: '2.5rem', borderTop: '4px solid #3B82F6' }}>
+              <div className="feature-card glass-panel" style={{ padding: '2.5rem', borderTop: '4px solid var(--status-info)' }}>
                 <h3 style={{ fontSize: '1.5rem', marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: '0.75rem' }}><span>🛡️</span> Notice & Consent</h3>
                 <p style={{ color: 'var(--text-secondary)', lineHeight: '1.6' }}>Section 5 & 6 specifies that data processing requires explicit, itemized consent. Our smart contracts guarantee that fiduciaries cannot access clinical data without cryptographically verifiable consent tokens issued by the patient.</p>
               </div>
 
-              <div className="feature-card glass-panel" style={{ padding: '2.5rem', borderTop: '4px solid #EF4444' }}>
+              <div className="feature-card glass-panel" style={{ padding: '2.5rem', borderTop: '4px solid var(--status-rejected)' }}>
                 <h3 style={{ fontSize: '1.5rem', marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: '0.75rem' }}><span>🗑️</span> Right to Erasure</h3>
                 <p style={{ color: 'var(--text-secondary)', lineHeight: '1.6' }}>Under Section 12, Data Principals have the right to request deletion of their data. Patients can trigger an immediate on-chain "Erasure Request" event, legally mandating the fiduciary to purge medical records.</p>
               </div>
 
-              <div className="feature-card glass-panel" style={{ padding: '2.5rem', borderTop: '4px solid #10B981' }}>
+              <div className="feature-card glass-panel" style={{ padding: '2.5rem', borderTop: '4px solid var(--status-approved)' }}>
                 <h3 style={{ fontSize: '1.5rem', marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: '0.75rem' }}><span>🔍</span> Immutable Audit</h3>
                 <p style={{ color: 'var(--text-secondary)', lineHeight: '1.6' }}>Section 8 requires Fiduciaries to maintain security safeguards. The Hedera ledger acts as an undisputed, tamper-proof audit trail for every single piece of accessed medical data, accessible instantly by Data Protection Officers.</p>
               </div>
@@ -363,7 +381,7 @@ function App() {
             <p style={{ marginBottom: '3rem' }}>Logged in as {account.slice(0, 6)}...{account.slice(-4)}. Select your portal:</p>
             <div className="context-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '2rem' }}>
               {availableRoles.map(r => (
-                <button key={r} className="context-card glass-panel" onClick={() => { setRole(r.toLowerCase()); setShowContextSelection(false); }} style={{ padding: '2.5rem 1.5rem', cursor: 'pointer' }}>
+                <button key={r} className="context-card glass-panel secondary-btn" onClick={() => { setRole(r.toLowerCase()); setShowContextSelection(false); }} style={{ padding: '2.5rem 1.5rem', cursor: 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'center', transition: 'all 0.4s cubic-bezier(0.4, 0, 0.2, 1)' }}>
                   <div style={{ fontSize: '3rem', marginBottom: '1rem' }}>
                     {r === "Patient" ? "👤" : r === "Hospital" ? "🏥" : r === "Admin" ? "🛡️" : r === "Doctor" ? "🩺" : "🏢"}
                   </div>
@@ -375,7 +393,13 @@ function App() {
         </div>
       ) : (
         <>
-          <Navbar account={account} role={role} onDisconnect={disconnectWallet} />
+          <Navbar 
+            account={account} 
+            role={role} 
+            onDisconnect={disconnectWallet} 
+            theme={theme}
+            onToggleTheme={toggleTheme}
+          />
           <div className="app-body">
             {role && <Sidebar role={role} activeTab={activeTab} onTabChange={handleTabChange} />}
             <main className="main-content">

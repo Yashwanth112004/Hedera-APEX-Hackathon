@@ -1,0 +1,112 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Sora:wght@300;400;500;600;700&display=swap');
+
+:root {
+  /* Medical Futuristic Color Palette */
+  --medical-blue: #0F4C81;
+  --soft-white: #F7FAFC;
+  --aqua-accent: #22D3EE;
+  --gradient-blue-start: #3B82F6;
+  --gradient-blue-end: #0EA5E9;
+  --neon-glow: rgba(34, 211, 238, 0.5);
+  --glass-bg: rgba(15, 76, 129, 0.1);
+  --glass-border: rgba(255, 255, 255, 0.1);
+  --glass-shadow: 0 8px 32px 0 rgba(31, 38, 135, 0.37);
+  
+  /* Typography */
+  --font-primary: 'Inter', sans-serif;
+  --font-accent: 'Sora', sans-serif;
+}
+
+body {
+  margin: 0;
+  padding: 0;
+  font-family: var(--font-primary);
+  background: radial-gradient(circle at top right, #0a192f, #020617);
+  color: var(--soft-white);
+  min-height: 100vh;
+  overflow-x: hidden;
+}
+
+/* Glassmorphism Utility */
+.glass-panel {
+  background: var(--glass-bg);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid var(--glass-border);
+  border-radius: 16px;
+  box-shadow: var(--glass-shadow);
+}
+
+.glass-card {
+  background: rgba(255, 255, 255, 0.03);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  border-radius: 20px;
+  transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.glass-card:hover {
+  transform: translateY(-10px) rotateX(5deg);
+  background: rgba(255, 255, 255, 0.08);
+  border-color: var(--aqua-accent);
+  box-shadow: 0 0 20px var(--neon-glow);
+}
+
+/* Animations */
+@keyframes float {
+  0% { transform: translateY(0px); }
+  50% { transform: translateY(-20px); }
+  100% { transform: translateY(0px); }
+}
+
+.floating {
+  animation: float 6s ease-in-out infinite;
+}
+
+@keyframes pulse-glow {
+  0% { box-shadow: 0 0 5px var(--neon-glow); }
+  50% { box-shadow: 0 0 20px var(--neon-glow); }
+  100% { box-shadow: 0 0 5px var(--neon-glow); }
+}
+
+.glow-active {
+  animation: pulse-glow 2s infinite;
+}
+
+/* 3D Depth */
+.depth-layer {
+  position: relative;
+  z-index: 1;
+}
+
+.depth-layer::after {
+  content: '';
+  position: absolute;
+  top: 10%;
+  left: 10%;
+  width: 80%;
+  height: 80%;
+  background: var(--aqua-accent);
+  filter: blur(100px);
+  opacity: 0.1;
+  z-index: -1;
+}
+
+/* Custom Scrollbar */
+::-webkit-scrollbar {
+  width: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: rgba(2, 6, 23, 0.5);
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--medical-blue);
+  border-radius: 10px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--aqua-accent);
+}

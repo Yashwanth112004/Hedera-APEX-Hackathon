@@ -136,11 +136,11 @@ const PharmacyDashboard = ({ account, consentContract, auditLogContract, accessC
                 <div className="glass-panel" style={{ padding: '2rem' }}>
                     <h3>Compliance Status</h3>
                     <div className="status-indicator" style={{ display: 'flex', alignItems: 'center', gap: '1rem', marginTop: '1rem' }}>
-                        <div style={{ width: '12px', height: '12px', borderRadius: '50%', backgroundColor: '#22C55E' }}></div>
+                        <div style={{ width: '12px', height: '12px', borderRadius: '50%', backgroundColor: 'var(--status-approved)' }}></div>
                         <span style={{ fontSize: '0.9rem' }}>Identity Verified (Wallet Protocol)</span>
                     </div>
                     <div className="status-indicator" style={{ display: 'flex', alignItems: 'center', gap: '1rem', marginTop: '0.5rem' }}>
-                        <div style={{ width: '12px', height: '12px', borderRadius: '50%', backgroundColor: '#22C55E' }}></div>
+                        <div style={{ width: '12px', height: '12px', borderRadius: '50%', backgroundColor: 'var(--status-approved)' }}></div>
                         <span style={{ fontSize: '0.9rem' }}>Blockchain Audit Enabled</span>
                     </div>
                 </div>
@@ -173,7 +173,7 @@ const PharmacyDashboard = ({ account, consentContract, auditLogContract, accessC
                                     <td>
                                         <div style={{ display: 'flex', gap: '0.5rem' }}>
                                             {px.isAuthorized ? (
-                                                <button className="secondary-btn" onClick={() => decryptPrescription(px)} style={{ background: 'var(--success-color)', border: 'none' }}>
+                                                <button className="secondary-btn" onClick={() => decryptPrescription(px)} style={{ background: 'var(--status-approved)', border: 'none', color: '#fff' }}>
                                                     🔓 Decrypt
                                                 </button>
                                             ) : (
@@ -191,20 +191,20 @@ const PharmacyDashboard = ({ account, consentContract, auditLogContract, accessC
             </div>
 
             {decryptedRx && (
-                <div className="dashboard-section glass-panel" style={{ marginTop: '2rem', padding: '2rem', borderLeft: '4px solid var(--primary-color)' }}>
+                <div className="dashboard-section glass-panel" style={{ marginTop: '2rem', padding: '2rem', borderLeft: '4px solid var(--medical-primary)' }}>
                     <h3 style={{ marginBottom: '1rem' }}>Prescription Details</h3>
                     <div className="form-grid" style={{ display: 'grid', gridTemplateColumns: 'minmax(120px, 150px) 1fr', gap: '0.75rem', marginBottom: '2rem' }}>
                         <strong>Patient:</strong> <span>{decryptedRx.patientName || "N/A"}</span>
 
                         {decryptedRx.medication ? (
                             <>
-                                <strong>Medication:</strong> <span style={{ color: 'var(--primary-color)', fontWeight: 'bold' }}>{decryptedRx.medication}</span>
+                                <strong>Medication:</strong> <span style={{ color: 'var(--medical-primary)', fontWeight: 'bold' }}>{decryptedRx.medication}</span>
                                 <strong>Dosage:</strong> <span>{decryptedRx.dosage}</span>
                                 <strong>Duration:</strong> <span>{decryptedRx.duration}</span>
                             </>
                         ) : (
                             <>
-                                <strong>Clinical Data:</strong> <span style={{ color: 'var(--primary-color)', fontWeight: 'bold' }}>{decryptedRx.clinicalData || "No data provided"}</span>
+                                <strong>Clinical Data:</strong> <span style={{ color: 'var(--medical-primary)', fontWeight: 'bold' }}>{decryptedRx.clinicalData || "No data provided"}</span>
                             </>
                         )}
 
@@ -213,7 +213,7 @@ const PharmacyDashboard = ({ account, consentContract, auditLogContract, accessC
 
                     <div style={{ borderTop: '1px solid rgba(255,255,255,0.1)', paddingTop: '1.5rem', display: 'flex', justifyContent: 'flex-end', gap: '1rem' }}>
                         <button className="secondary-btn" onClick={() => setDecryptedRx(null)}>Close View</button>
-                        <button className="primary-btn" onClick={handleDispense} disabled={isDispensing} style={{ background: '#22C55E' }}>
+                        <button className="primary-btn" onClick={handleDispense} disabled={isDispensing} style={{ background: 'var(--status-approved)' }}>
                             {isDispensing ? "Processing..." : "Mark as Dispensed & Remove from Queue"}
                         </button>
                     </div>
@@ -221,8 +221,8 @@ const PharmacyDashboard = ({ account, consentContract, auditLogContract, accessC
             )}
 
             {dispensedId && (
-                <div className="dashboard-section glass-panel" style={{ marginTop: '2rem', padding: '2rem', borderLeft: '4px solid #22C55E', textAlign: 'center' }}>
-                    <h3 style={{ color: '#22C55E', marginBottom: '0.5rem' }}>✅ Dispensation Logged Successfully</h3>
+                <div className="dashboard-section glass-panel" style={{ marginTop: '2rem', padding: '2rem', borderLeft: '4px solid var(--status-approved)', textAlign: 'center' }}>
+                    <h3 style={{ color: 'var(--status-approved)', marginBottom: '0.5rem' }}>✅ Dispensation Logged Successfully</h3>
                     <p style={{ color: 'var(--text-secondary)' }}>Prescription {dispensedId} has been fulfilled and removed from the global queue.</p>
                 </div>
             )}

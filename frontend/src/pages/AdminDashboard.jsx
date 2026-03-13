@@ -193,14 +193,14 @@ export default function AdminDashboard() {
                     <td style={{ fontFamily: 'monospace' }}>{roleInfo.wallet}</td>
                     <td>{getRoleName(roleInfo.roleId)}</td>
                     <td>
-                      <span className="status-badge active" style={{ backgroundColor: 'var(--success-color)', filter: 'brightness(0.8)' }}>
+                      <span className="status-badge active" style={{ backgroundColor: 'var(--status-approved)', filter: 'brightness(0.9)', color: '#fff' }}>
                         Active User
                       </span>
                     </td>
                     <td>
                       <button
                         className="secondary-btn"
-                        style={{ color: 'var(--danger-color)', borderColor: 'var(--danger-color)' }}
+                        style={{ color: 'var(--status-rejected)', borderColor: 'var(--status-rejected)' }}
                         onClick={() => revokeRole(roleInfo.wallet)}
                       >
                         Revoke Logic Access

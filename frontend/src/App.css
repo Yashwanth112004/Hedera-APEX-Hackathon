@@ -45,8 +45,7 @@
   backdrop-filter: var(--glass-blur);
   -webkit-backdrop-filter: var(--glass-blur);
   border: 1px solid var(--glass-border);
-  border-top: 1px solid var(--glass-highlight);
-  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.6), inset 0 1px 0 rgba(255, 255, 255, 0.1);
+  box-shadow: var(--shadow-3d);
   border-radius: 28px;
   padding: 4rem;
   animation: fadeIn 0.8s ease-out;
@@ -56,8 +55,9 @@
   font-size: 3.5rem;
   font-weight: 700;
   margin-bottom: 0.5rem;
-  background: linear-gradient(135deg, #fff 0%, #a5b4fc 100%);
+  background: var(--grad-primary);
   -webkit-background-clip: text;
+  background-clip: text;
   -webkit-text-fill-color: transparent;
   letter-spacing: -1px;
 }
@@ -66,7 +66,7 @@
   font-size: 1.8rem;
   font-weight: 500;
   margin-bottom: 1.5rem;
-  color: var(--primary-hover);
+  color: var(--medical-secondary);
 }
 
 .app-description {
@@ -101,9 +101,9 @@
 }
 
 .connect-wallet-btn {
-  background: linear-gradient(135deg, var(--primary-color), #4f46e5);
+  background: var(--grad-primary);
   color: white;
-  box-shadow: 0 4px 15px rgba(99, 102, 241, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.2);
+  box-shadow: var(--shadow-3d), inset 0 1px 0 rgba(255, 255, 255, 0.2);
 }
 
 .connect-wallet-btn:hover {
@@ -112,9 +112,9 @@
 }
 
 .admin-login-btn {
-  background: rgba(255, 255, 255, 0.1);
-  color: white;
-  border: 1px solid rgba(255, 255, 255, 0.2);
+  background: var(--btn-secondary-bg);
+  color: var(--btn-secondary-text);
+  border: 1px solid var(--btn-secondary-border);
   backdrop-filter: blur(10px);
 }
 
@@ -123,10 +123,10 @@
   transform: translateY(-2px);
 }
 
-/* Navbar */
+/* Navbar Style Refined in Navbar.jsx inline styles, but base utility here */
 .navbar {
   /* Glass Panel */
-  background: rgba(15, 23, 42, 0.7);
+  background: var(--glass-bg);
   backdrop-filter: var(--glass-blur);
   -webkit-backdrop-filter: var(--glass-blur);
   border-bottom: 1px solid var(--glass-border);
@@ -145,9 +145,7 @@
 }
 
 .navbar-brand h2 {
-  background: linear-gradient(135deg, #fff, #a5b4fc);
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
+  color: var(--medical-primary);
   font-size: 1.5rem;
   margin: 0;
 }
@@ -159,33 +157,34 @@
 }
 
 .account-address {
-  background: rgba(255, 255, 255, 0.05);
-  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: var(--panel-bg);
+  border: 1px solid var(--border-color);
   padding: 0.5rem 1rem;
   border-radius: 8px;
   font-family: 'Courier New', monospace;
   font-size: 0.9rem;
-  color: var(--primary-hover);
+  color: var(--medical-secondary);
 }
 
 .role-badge {
-  background: rgba(99, 102, 241, 0.2);
-  border: 1px solid rgba(99, 102, 241, 0.3);
-  color: var(--primary-hover);
+  background: var(--grad-medical);
+  color: white;
   padding: 0.4rem 1rem;
   border-radius: 20px;
   font-size: 0.85rem;
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 1px;
+  box-shadow: var(--shadow-3d);
 }
 
 .disconnect-btn {
-  background: rgba(239, 68, 68, 0.1);
-  color: var(--danger-color);
-  border: 1px solid rgba(239, 68, 68, 0.2);
+  background: var(--status-rejected); /* Keep rejected solid for visibility */
+  color: white;
+  border: none;
   padding: 0.5rem 1rem;
   border-radius: 8px;
+  box-shadow: 0 4px 12px rgba(239, 68, 68, 0.2);
 }
 
 .disconnect-btn:hover {
@@ -196,7 +195,7 @@
 .sidebar {
   width: 280px;
   /* Glass */
-  background: rgba(15, 23, 42, 0.5);
+  background: var(--glass-bg);
   backdrop-filter: var(--glass-blur);
   -webkit-backdrop-filter: var(--glass-blur);
   border-right: 1px solid var(--glass-border);
@@ -225,15 +224,15 @@
 }
 
 .sidebar-item:hover {
-  background: rgba(255, 255, 255, 0.05);
-  color: var(--text-primary);
+  background: var(--btn-secondary-bg);
+  color: var(--btn-secondary-text);
+  border-color: var(--btn-secondary-border);
 }
 
 .sidebar-item.active {
-  background: linear-gradient(135deg, rgba(99, 102, 241, 0.2), rgba(99, 102, 241, 0.05));
-  border-color: rgba(99, 102, 241, 0.3);
-  color: var(--text-primary);
-  box-shadow: inset 0 0 20px rgba(99, 102, 241, 0.1);
+  background: var(--grad-medical);
+  color: white;
+  box-shadow: var(--shadow-3d);
 }
 
 /* Dashboards Generic */
@@ -275,29 +274,18 @@
   backdrop-filter: var(--glass-blur);
   -webkit-backdrop-filter: var(--glass-blur);
   border: 1px solid var(--glass-border);
-  border-top: 1px solid var(--glass-highlight);
   border-radius: 24px;
-  padding: 1.8rem;
+  padding: 2rem;
   position: relative;
   overflow: hidden;
-  transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1), box-shadow 0.3s ease, border-color 0.3s ease;
-}
-
-.dashboard-card::before {
-  content: '';
-  position: absolute;
-  top: 0;
-  left: 0;
-  width: 4px;
-  height: 100%;
-  background: currentColor;
-  opacity: 0.8;
+  transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+  box-shadow: var(--glass-shadow);
 }
 
 .dashboard-card:hover {
-  transform: translateY(-6px);
-  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.4), 0 0 20px rgba(99, 102, 241, 0.15);
-  border-color: rgba(99, 102, 241, 0.3);
+  transform: translateY(-8px) scale(1.02);
+  box-shadow: 0 20px 40px rgba(15, 76, 129, 0.15), var(--glow-3d);
+  border-color: var(--medical-aqua);
 }
 
 .card-icon {
@@ -333,13 +321,12 @@
   /* Glass Panel */
   background: var(--glass-bg);
   backdrop-filter: var(--glass-blur);
-  -webkit-backdrop-filter: var(--glass-blur);
   border: 1px solid var(--glass-border);
-  border-top: 1px solid var(--glass-highlight);
-  border-radius: 24px;
-  padding: 2.5rem;
-  margin-bottom: 2rem;
-  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
+  border-radius: 28px;
+  padding: 3rem;
+  margin-bottom: 2.5rem;
+  box-shadow: var(--glass-shadow);
+  animation: fadeIn 0.8s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 .dashboard-section h3 {
@@ -433,11 +420,9 @@
 
 .modal {
   /* Glass Panel */
-  background: var(--bg-dark);
-  /* Solid fallback */
-  background: linear-gradient(135deg, rgba(30, 41, 59, 0.9), rgba(15, 23, 42, 0.95));
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
+  background: var(--bg-color);
+  border: 1px solid var(--glass-border);
+  box-shadow: var(--shadow-3d);
   border-radius: 24px;
   max-width: 500px;
   width: 90%;
@@ -518,9 +503,9 @@
 .form-group select:focus,
 .form-group textarea:focus {
   outline: none;
-  border-color: var(--primary-color);
+  border-color: var(--medical-primary);
   background: rgba(0, 0, 0, 0.3);
-  box-shadow: 0 0 0 4px rgba(99, 102, 241, 0.1);
+  box-shadow: 0 0 0 4px var(--glow-3d);
 }
 
 .form-group select option {
@@ -530,8 +515,9 @@
 
 /* Buttons Variants */
 .primary-btn {
-  background: linear-gradient(135deg, var(--primary-color), #4f46e5);
+  background: var(--grad-medical);
   color: white;
+  border: none;
 }
 
 .primary-btn:hover {
@@ -540,9 +526,9 @@
 }
 
 .secondary-btn {
-  background: rgba(255, 255, 255, 0.1);
-  color: white;
-  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: var(--btn-secondary-bg);
+  color: var(--btn-secondary-text);
+  border: 1px solid var(--btn-secondary-border);
 }
 
 .secondary-btn:hover {
@@ -551,9 +537,9 @@
 }
 
 .refresh-btn {
-  background: rgba(255, 255, 255, 0.05);
-  color: var(--text-primary);
-  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: var(--btn-secondary-bg);
+  color: var(--btn-secondary-text);
+  border: 1px solid var(--btn-secondary-border);
 }
 
 .refresh-btn:hover {
