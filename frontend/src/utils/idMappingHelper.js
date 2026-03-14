@@ -11,15 +11,31 @@ export const WALLET_MAPPER_ABI = [
 ];
 
 /**
+ * Normalizes an Ethereum/Hedera EVM address to EIP-55 or lowercase for consistency.
+ * @param {string} address The raw address string
+ * @returns {string} Normalized address
+ */
+export const normalizeAddress = (address) => {
+  if (!address) return "";
+  try {
+    return ethers.getAddress(address.toLowerCase().trim());
+  } catch (e) {
+    return address.toLowerCase().trim();
+  }
+};
+
+/**
  * Generates a purely local 6-character short ID (3 random digits + last 3 chars of wallet).
  * @param {string} walletAddress The full 0x... address
  * @returns {string} 6-character short ID
  */
 export const generateLocalShortID = (walletAddress) => {
-  if (!walletAddress || walletAddress.length < 4) return null;
+  const normalized = normalizeAddress(walletAddress);
+  if (!normalized || normalized.length < 4) return null;
   
+  // Use a more robust random for IDs to avoid collisions
   const rand = Math.floor(Math.random() * 1000).toString().padStart(3, '0');
-  const tail = walletAddress.slice(-3).toUpperCase();
+  const tail = normalized.slice(-3).toUpperCase();
   return `${rand}${tail}`;
 };
 

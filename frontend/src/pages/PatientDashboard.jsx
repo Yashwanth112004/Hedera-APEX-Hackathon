@@ -3,7 +3,7 @@ import { toast } from 'react-toastify';
 import { ethers } from 'ethers';
 import { QRCodeCanvas } from 'qrcode.react';
 import { fetchFromPinata, decryptData } from '../utils/ipfsHelper';
-import { generateLocalShortID } from '../utils/idMappingHelper';
+import { normalizeAddress, generateLocalShortID } from '../utils/idMappingHelper';
 
 const PatientDashboard = ({
   account,
@@ -34,37 +34,41 @@ const PatientDashboard = ({
   const [shortId, setShortId] = useState('');
   const [isRegisteringId, setIsRegisteringId] = useState(false);
   const [myPrescriptions, setMyPrescriptions] = useState([]);
+  const [selectedRequestId, setSelectedRequestId] = useState(null);
+  const [showSelectionModal, setShowSelectionModal] = useState(false);
+  const [selectedCids, setSelectedCids] = useState([]);
 
   // Fetch On-Chain Data
   React.useEffect(() => {
     const loadPatientData = async () => {
       if (!account) return;
+      const normalizedAccount = normalizeAddress(account);
 
       const provider = new ethers.BrowserProvider(window.ethereum);
 
       if (medicalRecordsContract) {
         try {
           const recordsReadContract = medicalRecordsContract.connect(provider);
-          const records = await recordsReadContract.getPatientRecords(account);
+          const records = await recordsReadContract.getPatientRecords(normalizedAccount);
           setMyRecords(records);
 
           // Fetch Global Prescription Queue and filter by patient wallet
           const allPrescriptions = await recordsReadContract.getPendingPrescriptions();
-          const filteredRx = allPrescriptions.filter(rx => rx.patient.toLowerCase() === account.toLowerCase());
+          const filteredRx = allPrescriptions.filter(rx => normalizeAddress(rx.patient) === normalizedAccount);
           setMyPrescriptions(filteredRx);
         } catch { console.error("Could not fetch MedicalRecords"); }
       }
       if (consentContract) {
         try {
           const consentReadContract = consentContract.connect(provider);
-          const requests = await consentReadContract.getPendingRequests(account);
+          const requests = await consentReadContract.getPendingRequests(normalizedAccount);
           setPendingRequests(requests);
         } catch { console.error("Could not fetch Pending Requests"); }
       }
       if (walletMapperContract) {
         try {
           const mapperReadContract = walletMapperContract.connect(provider);
-          const id = await mapperReadContract.getShortIDFromWallet(account);
+          const id = await mapperReadContract.getShortIDFromWallet(normalizedAccount);
           if (id) setShortId(id);
         } catch { console.error("Could not fetch Short ID"); }
       }
@@ -75,37 +79,81 @@ const PatientDashboard = ({
 
   const handleRegisterShortId = async () => {
     if (!walletMapperContract || !account) return;
+    const normalizedAccount = normalizeAddress(account);
+    
     try {
       setIsRegisteringId(true);
-      const generatedId = generateLocalShortID(account);
-      if (!generatedId) throw new Error("Could not generate ID");
       
-      const tx = await walletMapperContract.registerShortID(generatedId, { gasLimit: 500000 });
-      toast.info(`Registering Short ID: ${generatedId}... Confirm in Wallet`);
-      await tx.wait();
-      
-      setShortId(generatedId);
-      toast.success("Short ID Registered Successfully!");
+      // Attempt generation with retry logic
+      let generatedId = "";
+      let attempts = 0;
+      const maxAttempts = 3;
+
+      while (attempts < maxAttempts) {
+        generatedId = generateLocalShortID(normalizedAccount);
+        
+        // Quick check if ID exists locally or some other sanity check could go here
+        try {
+          const tx = await walletMapperContract.registerShortID(generatedId, { gasLimit: 500000 });
+          toast.info(`Registering ID: ${generatedId}. Please confirm in HashPack...`);
+          await tx.wait();
+          
+          setShortId(generatedId);
+          toast.success(`Short ID '${generatedId}' is now yours!`);
+          return; // Success!
+        } catch (err) {
+          // Check for "already taken" revert string if possible, or just retry
+          const errMsg = err.message || "";
+          if (errMsg.includes("taken") && attempts < maxAttempts - 1) {
+            attempts++;
+            continue;
+          }
+          if (errMsg.includes("already has a Short ID")) {
+            toast.warning("Your wallet is already registered. Refreshing...");
+            // Trigger refresh
+            const id = await walletMapperContract.getShortIDFromWallet(normalizedAccount);
+            if (id) setShortId(id);
+            return;
+          }
+          throw err; // Re-throw if it's a different error
+        }
+      }
     } catch (err) {
-      console.error(err);
-      toast.error("Failed to register Short ID. It might be taken.");
+      console.error("Short ID Registration Error:", err);
+      toast.error(err.reason || err.message || "Registration failed. Try again.");
     } finally {
       setIsRegisteringId(false);
     }
   };
 
-  const handleApproveRequest = async (requestId) => {
+  const handleApproveRequest = (requestId) => {
     if (!consentContract) return;
-    try {
-      // Default to granting a 24-hour consent via the new flow
-      const tx = await consentContract.approveRequest(requestId, "Approved via Patient Portal", 86400, { gasLimit: 1000000 });
-      await tx.wait();
-      toast.success("Provider Request Approved!");
+    const allCids = [
+      ...myRecords.map(r => r.cid),
+      ...myPrescriptions.map(p => p.cid)
+    ];
 
-      // Refresh list locally
+    if (allCids.length > 0) {
+      setSelectedRequestId(requestId);
+      setShowSelectionModal(true);
+      setSelectedCids([]); // reset
+    } else {
+      // If no records, just approve normally with empty hash
+      executeApproval(requestId, "");
+    }
+  };
+
+  const executeApproval = async (requestId, dataHash) => {
+    try {
+      toast.info("Approving request & linking data...");
+      const tx = await consentContract.approveRequest(requestId, dataHash, 86400, { gasLimit: 1000000 });
+      await tx.wait();
+      toast.success("Request Approved & Records Linked!");
+      setShowSelectionModal(false);
       setPendingRequests(prev => prev.filter(r => r.id !== requestId));
       if (onLoadConsents) onLoadConsents();
-    } catch {
+    } catch (err) {
+      console.error(err);
       toast.error("Failed to approve request.");
     }
   };
@@ -193,58 +241,68 @@ const PatientDashboard = ({
   ];
 
   return (
-    <div className="dashboard animate-fade-in">
-      <div className="dashboard-header">
+    <div className="patient-dashboard animate-fade-in">
+      <div className="dashboard-header" style={{ marginBottom: '2.5rem' }}>
         <div>
-          <h2 style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
-            Patient Dashboard
-            {shortId ? (
-              <span style={{ fontSize: '1rem', background: 'var(--grad-medical)', padding: '0.2rem 0.8rem', borderRadius: '12px', color: '#fff', boxShadow: 'var(--shadow-3d)' }}>
-                ID: {shortId}
-              </span>
-            ) : (
-              <button 
-                className="secondary-btn" 
-                style={{ fontSize: '0.8rem', padding: '0.3rem 0.8rem' }}
-                onClick={handleRegisterShortId}
-                disabled={isRegisteringId}
-              >
-                {isRegisteringId ? "Registering..." : "Create Short ID"}
-              </button>
-            )}
-          </h2>
+          <h1 style={{ fontSize: '2.5rem', fontWeight: '800', color: 'var(--medical-primary)', marginBottom: '0.5rem', letterSpacing: '-0.02em' }}>
+            Patient Health Portal
+          </h1>
+          <p style={{ color: 'var(--text-muted)', fontSize: '1.1rem' }}>Securely manage your clinical data and privacy consents.</p>
         </div>
         <div className="dashboard-actions">
           <button
             className="primary-btn"
             onClick={() => setShowGrantForm(true)}
+            style={{ borderRadius: '50px', padding: '0.8rem 1.8rem' }}
           >
             Grant New Consent
           </button>
           <button
             className="secondary-btn"
             onClick={() => setShowQR(true)}
+            style={{ borderRadius: '50px', padding: '0.8rem 1.8rem' }}
           >
-            Generate QR Code
-          </button>
-          <button
-            className="refresh-btn"
-            onClick={onLoadConsents}
-          >
-            Refresh
+            Share ID QR
           </button>
         </div>
       </div>
 
-      <div className="dashboard-cards">
+      <div className="dashboard-grid" style={{ marginBottom: '3rem' }}>
+        <div className="glass-panel floating-card" style={{ padding: '2rem' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '1.5rem' }}>
+            <div>
+              <h3 style={{ fontSize: '1.25rem', color: 'var(--medical-primary)', marginBottom: '0.25rem' }}>Digital Identity</h3>
+              <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>{account}</p>
+            </div>
+          </div>
+          
+          <div style={{ marginTop: '1rem' }}>
+            {shortId ? (
+              <div style={{ background: 'var(--grad-teal)', padding: '1.2rem', borderRadius: '16px', color: 'white', textAlign: 'center', boxShadow: '0 8px 20px rgba(20, 184, 166, 0.2)' }}>
+                <p style={{ fontSize: '0.7rem', textTransform: 'uppercase', letterSpacing: '0.1em', opacity: 0.8, marginBottom: '0.25rem' }}>Verified Patient ID</p>
+                <h2 style={{ fontSize: '2rem', fontWeight: '900', letterSpacing: '2px', color: 'white', margin: 0 }}>{shortId}</h2>
+              </div>
+            ) : (
+              <button 
+                className="primary-btn" 
+                onClick={handleRegisterShortId} 
+                disabled={isRegisteringId}
+                style={{ width: '100%', borderRadius: '16px', padding: '1rem' }}
+              >
+                {isRegisteringId ? "Securing..." : "Generate Patient ID"}
+              </button>
+            )}
+          </div>
+        </div>
+
         {dashboardCards.map((card, index) => (
-          <div key={index} className="dashboard-card glass-panel" style={{ color: card.color }}>
-            <div className="card-icon" style={{ backgroundColor: `rgba(255,255,255,0.05)`, color: card.color }}>
+          <div key={index} className="dashboard-card floating-card" style={{ borderTop: `4px solid ${card.color}`, padding: '1.5rem 2rem' }}>
+            <div className="card-icon" style={{ backgroundColor: `${card.color}10`, color: card.color }}>
               {card.icon}
             </div>
             <div className="card-content">
-              <h3>{card.title}</h3>
-              <p className="card-value">{card.value}</p>
+              <h3 style={{ fontSize: '1rem', color: 'var(--text-muted)' }}>{card.title}</h3>
+              <p className="card-value" style={{ fontSize: '1.8rem', fontWeight: '800' }}>{card.value}</p>
             </div>
           </div>
         ))}
@@ -253,16 +311,16 @@ const PatientDashboard = ({
       <div className="dashboard-section glass-panel">
         <h3>Inbound Access Requests</h3>
         {pendingRequests.length === 0 ? (
-          <p style={{ color: 'var(--text-secondary)', padding: '1rem 0' }}>No pending requests from providers.</p>
+          <p style={{ color: 'var(--text-muted)', textAlign: 'center', padding: '2rem' }}>No pending requests from providers.</p>
         ) : (
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '1rem', marginTop: '1rem' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '1.5rem' }}>
             {pendingRequests.map(req => (
-              <div key={req.id.toString()} style={{ padding: '1.5rem', border: '1px solid var(--medical-aqua)', borderRadius: '12px', background: 'var(--panel-bg)', boxShadow: 'var(--shadow-3d)' }}>
-                <div style={{ fontSize: '0.9rem', color: 'var(--text-secondary)', marginBottom: '0.5rem' }}>From Fiduciary: {req.provider.slice(0, 6)}...{req.provider.slice(-4)}</div>
-                <h4 style={{ marginBottom: '1rem' }}>{req.purpose}</h4>
-                <div style={{ display: 'flex', gap: '0.5rem' }}>
-                  <button className="primary-btn" style={{ flex: 1, padding: '0.5rem' }} onClick={() => handleApproveRequest(req.id)}>Approve</button>
-                  <button className="revoke-btn" style={{ flex: 1, padding: '0.5rem' }} onClick={() => handleRejectRequest(req.id)}>Reject</button>
+              <div key={req.id.toString()} className="floating-card" style={{ borderColor: 'var(--medical-primary)40' }}>
+                <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: '0.75rem' }}>Provider: {req.provider.slice(0, 8)}...{req.provider.slice(-4)}</div>
+                <h4 style={{ marginBottom: '1.5rem', fontSize: '1.1rem' }}>{req.purpose}</h4>
+                <div style={{ display: 'flex', gap: '1rem' }}>
+                  <button className="primary-btn" style={{ flex: 1 }} onClick={() => handleApproveRequest(req.id)}>Approve</button>
+                  <button className="secondary-btn" style={{ flex: 1, color: '#EF4444', borderColor: '#EF444420' }} onClick={() => handleRejectRequest(req.id)}>Reject</button>
                 </div>
               </div>
             ))}
@@ -324,53 +382,98 @@ const PatientDashboard = ({
       </div>
 
       <div className="dashboard-section glass-panel" style={{ marginTop: '2rem' }}>
-        <h3>Active Prescriptions</h3>
-        <p style={{ fontSize: '0.9rem', color: 'var(--text-secondary)', marginBottom: '1.5rem' }}>
-          Medications prescribed by your doctors pending dispensation at a pharmacy.
-        </p>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
+          <div>
+            <h3>Master Health Records</h3>
+            <p style={{ fontSize: '0.9rem', color: 'var(--text-secondary)' }}>
+              All secure medical data cryptographically linked to your identity.
+            </p>
+          </div>
+          {shortId && (
+            <div style={{ textAlign: 'right' }}>
+              <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>Account Link:</span>
+              <div style={{ fontWeight: 'bold', color: 'var(--medical-primary)' }}>Short ID: {shortId}</div>
+            </div>
+          )}
+        </div>
 
-        {myPrescriptions.length === 0 ? (
-          <div style={{ padding: '2rem', textAlign: 'center', color: 'var(--text-secondary)' }}>
-            No active prescriptions found for your wallet.
+        {myRecords.length === 0 && myPrescriptions.length === 0 ? (
+          <div style={{ padding: '3rem', textAlign: 'center', color: 'var(--text-secondary)', background: 'rgba(255,255,255,0.02)', borderRadius: '12px' }}>
+            <div style={{ fontSize: '3rem', marginBottom: '1rem' }}>📂</div>
+            <p>No health records or prescriptions found for this wallet.</p>
           </div>
         ) : (
           <div className="table-container">
             <table className="data-table">
               <thead>
                 <tr>
-                  <th>Prescription ID</th>
-                  <th>Status</th>
+                  <th>Type</th>
+                  <th>Origin / ID</th>
                   <th>IPFS CID</th>
+                  <th>Date</th>
                   <th>Action</th>
                 </tr>
               </thead>
               <tbody>
-                {myPrescriptions.map((rx, i) => (
+                {/* Consolidate both records and prescriptions */}
+                {[
+                  ...myRecords.map(r => ({ 
+                    id: r.id, 
+                    patient: r.patient, 
+                    provider: r.provider, 
+                    cid: r.cid, 
+                    recordType: r.recordType, 
+                    timestamp: r.timestamp,
+                    category: 'Record' 
+                  })),
+                  ...myPrescriptions.map(p => ({ 
+                    id: p.recordId, 
+                    patient: p.patient, 
+                    patientName: p.patientName, 
+                    cid: p.cid, 
+                    recordType: 'Prescription', 
+                    category: 'Prescription' 
+                  }))
+                ].sort((a, b) => Number(b.timestamp || 0) - Number(a.timestamp || 0)).map((item, i) => (
                   <tr key={i}>
-                    <td><span style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}><span>💊</span>#{rx.recordId.toString()}</span></td>
-                    <td><span className="status-badge success">{rx.isDispensed ? 'Dispensed' : 'Pending'}</span></td>
+                    <td>
+                      <span style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                        <span>{item.category === 'Prescription' ? '💊' : '📄'}</span>
+                        {item.recordType}
+                      </span>
+                    </td>
+                    <td>
+                      <div style={{ fontSize: '0.85rem' }}>
+                        {item.category === 'Prescription' ? `RX #${item.id.toString()}` : `From: ${item.provider.slice(0, 6)}...${item.provider.slice(-4)}`}
+                      </div>
+                    </td>
                     <td>
                       <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                        <span style={{ fontFamily: 'monospace', color: 'var(--text-secondary)', fontSize: '0.9rem' }}>
-                          {rx.cid.slice(0, 10)}...{rx.cid.slice(-10)}
-                        </span>
+                        <code style={{ color: 'var(--text-secondary)', fontSize: '0.8rem' }}>
+                          {item.cid?.slice(0, 8) || "N/A"}...
+                        </code>
                         <button
-                          onClick={() => { navigator.clipboard.writeText(rx.cid); toast.success("CID copied to clipboard!"); }}
-                          style={{ background: 'transparent', border: 'none', cursor: 'pointer', fontSize: '1.2rem', padding: '0' }}
-                          title="Copy CID"
+                          onClick={() => { navigator.clipboard.writeText(item.cid); toast.success("CID copied!"); }}
+                          style={{ background: 'transparent', border: 'none', cursor: 'pointer', opacity: 0.6 }}
+                          title="Copy Full CID"
                         >
                           📋
                         </button>
                       </div>
                     </td>
                     <td>
+                      <span style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
+                        {item.timestamp ? new Date(Number(item.timestamp) * 1000).toLocaleDateString() : 'N/A'}
+                      </span>
+                    </td>
+                    <td>
                       <button
                         className="primary-btn"
-                        style={{ padding: '0.5rem 1rem', fontSize: '0.85rem' }}
-                        onClick={() => handleDecryptRecord(rx.cid)}
-                        disabled={isDecrypting && ipfsCid === rx.cid}
+                        style={{ padding: '0.4rem 0.8rem', fontSize: '0.8rem' }}
+                        onClick={() => handleDecryptRecord(item.cid)}
+                        disabled={isDecrypting && ipfsCid === item.cid}
                       >
-                        {isDecrypting && ipfsCid === rx.cid ? "Decrypting..." : "Decrypt Data"}
+                        {isDecrypting && ipfsCid === item.cid ? "..." : "🔓 Decrypt"}
                       </button>
                     </td>
                   </tr>
@@ -379,86 +482,83 @@ const PatientDashboard = ({
             </table>
           </div>
         )}
-      </div>
-
-      <div className="dashboard-section glass-panel" style={{ marginTop: '2rem' }}>
-        <h3>My Encrypted Records (IPFS)</h3>
-        <p style={{ fontSize: '0.9rem', color: 'var(--text-secondary)', marginBottom: '1.5rem' }}>
-          Your securely mapped medical data. Share the CID hash with your provider or decrypt it instantly.
-        </p>
-
-        {myRecords.length === 0 ? (
-          <div style={{ padding: '2rem', textAlign: 'center', color: 'var(--text-secondary)' }}>
-            No encrypted records have been mapped to your wallet yet.
+        
+        <div style={{ marginTop: '2.5rem', paddingTop: '2rem', borderTop: '1px solid var(--glass-border)' }}>
+          <h4 style={{ marginBottom: '1rem', fontSize: '1rem' }}>External CID Lookup</h4>
+          <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', marginBottom: '1rem' }}>
+            Directly decrypt records shared via IPFS hash (CID).
+          </p>
+          <div style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
+            <input
+              type="text"
+              className="glass-input"
+              placeholder="Paste IPFS CID (e.g., Qm...)"
+              value={ipfsCid}
+              onChange={(e) => setIpfsCid(e.target.value)}
+              style={{ flex: 1, backgroundColor: 'rgba(255,255,255,0.02)' }}
+            />
+            <button className="secondary-btn" onClick={() => handleDecryptRecord(ipfsCid)} disabled={isDecrypting}>
+              {isDecrypting ? "Decrypting..." : "Decrypt External CID"}
+            </button>
           </div>
-        ) : (
-          <div className="table-container">
-            <table className="data-table">
-              <thead>
-                <tr>
-                  <th>Record Type</th>
-                  <th>IPFS CID</th>
-                  <th>Action</th>
-                </tr>
-              </thead>
-              <tbody>
-                {myRecords.map((rec, i) => (
-                  <tr key={i}>
-                    <td><span style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}><span>📄</span>{rec.recordType}</span></td>
-                    <td>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                        <span style={{ fontFamily: 'monospace', color: 'var(--text-secondary)', fontSize: '0.9rem' }}>
-                          {rec.cid.slice(0, 10)}...{rec.cid.slice(-10)}
-                        </span>
-                        <button
-                          onClick={() => { navigator.clipboard.writeText(rec.cid); toast.success("CID copied to clipboard!"); }}
-                          style={{ background: 'transparent', border: 'none', cursor: 'pointer', fontSize: '1.2rem', padding: '0' }}
-                          title="Copy CID"
-                        >
-                          📋
-                        </button>
-                      </div>
-                    </td>
-                    <td>
-                      <button
-                        className="primary-btn"
-                        style={{ padding: '0.5rem 1rem', fontSize: '0.85rem' }}
-                        onClick={() => handleDecryptRecord(rec.cid)}
-                        disabled={isDecrypting && ipfsCid === rec.cid}
-                      >
-                        {isDecrypting && ipfsCid === rec.cid ? "Decrypting..." : "Decrypt Data"}
-                      </button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-
-        <div style={{ marginTop: '2rem', display: 'flex', gap: '1rem', alignItems: 'center' }}>
-          <input
-            type="text"
-            className="glass-input"
-            placeholder="Or paste an external IPFS CID directly (e.g., Qm...)"
-            value={ipfsCid}
-            onChange={(e) => setIpfsCid(e.target.value)}
-            style={{ flex: 1, backgroundColor: 'rgba(255,255,255,0.02)' }}
-          />
-          <button className="secondary-btn" onClick={() => handleDecryptRecord(ipfsCid)} disabled={isDecrypting}>
-            {isDecrypting ? "Decrypting..." : "Decrypt External CID"}
-          </button>
         </div>
 
         {decryptedRecord && (
-          <div style={{ marginTop: '2rem', padding: '1.5rem', backgroundColor: 'var(--panel-bg)', borderRadius: '12px', border: '1px solid var(--glass-border)', boxShadow: 'var(--shadow-3d)' }}>
-            <h4 style={{ color: 'var(--status-approved)', marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-              <span>🔓</span> Secure Personal Health Record
-            </h4>
-            <div style={{ display: 'grid', gridTemplateColumns: '120px 1fr', gap: '1rem', color: 'var(--text-secondary)' }}>
-              <strong>Facility Ref:</strong> <span>{decryptedRecord.type} Provider</span>
-              <strong>Record Type:</strong> <span>{decryptedRecord.type}</span>
-              <strong>Clinical Data:</strong> <span style={{ color: 'var(--text-primary)', lineHeight: '1.5' }}>{decryptedRecord.clinicalData}</span>
+          <div style={{ marginTop: '2rem', padding: '2rem', backgroundColor: 'var(--panel-bg)', borderRadius: '16px', border: '1px solid var(--medical-primary)', boxShadow: 'var(--shadow-lg)' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '1.5rem' }}>
+              <h4 style={{ color: 'var(--medical-primary)', margin: 0, display: 'flex', alignItems: 'center', gap: '0.75rem', fontSize: '1.25rem' }}>
+                <span>🔓</span> Decrypted Health Record
+              </h4>
+              <button 
+                className="close-btn" 
+                onClick={() => setDecryptedRecord(null)}
+                style={{ background: 'rgba(255,255,255,0.05)', borderRadius: '50%', width: '30px', height: '30px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+              >
+                ×
+              </button>
+            </div>
+            
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1.5rem' }}>
+              <div className="glass-panel" style={{ padding: '1rem', background: 'rgba(255,255,255,0.02)' }}>
+                <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '0.25rem' }}>Category</div>
+                <div style={{ fontWeight: '600' }}>{decryptedRecord.category || decryptedRecord.type || "Medical Record"}</div>
+              </div>
+              <div className="glass-panel" style={{ padding: '1rem', background: 'rgba(255,255,255,0.02)' }}>
+                <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '0.25rem' }}>Type</div>
+                <div style={{ fontWeight: '600' }}>{decryptedRecord.type || decryptedRecord.recordType || "N/A"}</div>
+              </div>
+              <div className="glass-panel" style={{ padding: '1rem', background: 'rgba(255,255,255,0.02)', gridColumn: 'span 2' }}>
+                <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '0.25rem' }}>Clinical Data / Observation</div>
+                <div style={{ color: 'var(--text-primary)', lineHeight: '1.6', whiteSpace: 'pre-wrap' }}>
+                  {decryptedRecord.clinicalData || decryptedRecord.medication || "No summary provided"}
+                  {decryptedRecord.dosage && `\nDosage: ${decryptedRecord.dosage}`}
+                  {decryptedRecord.duration && `\nDuration: ${decryptedRecord.duration}`}
+                </div>
+              </div>
+              {decryptedRecord.fileData && (
+                <div className="glass-panel" style={{ padding: '1rem', background: 'rgba(255,255,255,0.02)', gridColumn: 'span 2' }}>
+                  <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '0.5rem' }}>Attached Documents</div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+                    <div style={{ fontSize: '1.5rem' }}>📄</div>
+                    <div style={{ flex: 1 }}>
+                      <div style={{ fontWeight: '600', fontSize: '0.9rem' }}>{decryptedRecord.fileName || "medical_report.pdf"}</div>
+                      <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>Secure Digital Asset</div>
+                    </div>
+                    <a 
+                      href={decryptedRecord.fileData} 
+                      download={decryptedRecord.fileName || "report"} 
+                      className="secondary-btn"
+                      style={{ padding: '0.4rem 0.8rem', fontSize: '0.8rem' }}
+                    >
+                      Download
+                    </a>
+                  </div>
+                </div>
+              )}
+            </div>
+            
+            <div style={{ marginTop: '1.5rem', fontSize: '0.75rem', color: 'var(--text-secondary)', textAlign: 'right' }}>
+              Decrypted at: {new Date().toLocaleString()}
             </div>
           </div>
         )}
@@ -520,6 +620,60 @@ const PatientDashboard = ({
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {showSelectionModal && (
+        <div className="modal-overlay">
+          <div className="modal">
+            <div className="modal-header">
+              <h3>Link Records to Access Request</h3>
+              <button className="close-btn" onClick={() => setShowSelectionModal(false)}>×</button>
+            </div>
+            <div className="modal-body">
+              <p style={{ marginBottom: '1.5rem', color: 'var(--text-secondary)', fontSize: '0.9rem' }}>
+                Select the records you want the provider to see immediately upon your approval.
+              </p>
+              <div style={{ maxHeight: '300px', overflowY: 'auto', marginBottom: '1.5rem', display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+                {[
+                  ...myRecords.map(r => ({ cid: r.cid, type: r.recordType, cat: 'Record' })),
+                  ...myPrescriptions.map(p => ({ cid: p.cid, type: 'Prescription', cat: 'Prescription' }))
+                ].map((item, idx) => (
+                  <div 
+                    key={idx} 
+                    className={`glass-panel ${selectedCids.includes(item.cid) ? 'active-gradient' : ''}`}
+                    style={{ padding: '1rem', cursor: 'pointer', border: selectedCids.includes(item.cid) ? '1px solid var(--medical-primary)' : '1px solid var(--glass-border)' }}
+                    onClick={() => {
+                      setSelectedCids(prev => 
+                        prev.includes(item.cid) ? prev.filter(c => c !== item.cid) : [...prev, item.cid]
+                      );
+                    }}
+                  >
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <span style={{ fontSize: '0.9rem' }}>{item.cat === 'Prescription' ? '💊' : '📄'} {item.type}</span>
+                      <input type="checkbox" checked={selectedCids.includes(item.cid)} readOnly />
+                    </div>
+                    <code style={{ fontSize: '0.7rem', color: 'var(--text-secondary)' }}>{item.cid.slice(0, 16)}...</code>
+                  </div>
+                ))}
+              </div>
+              <div className="modal-actions">
+                <button 
+                  className="primary-btn" 
+                  onClick={() => executeApproval(selectedRequestId, selectedCids.join(','))}
+                  disabled={selectedCids.length === 0}
+                >
+                  Confirm & Link {selectedCids.length} Records
+                </button>
+                <button 
+                  className="secondary-btn" 
+                  onClick={() => executeApproval(selectedRequestId, "")}
+                >
+                  Approve Without Linking
+                </button>
+              </div>
+            </div>
           </div>
         </div>
       )}

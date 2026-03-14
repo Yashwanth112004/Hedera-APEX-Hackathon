@@ -1,193 +1,201 @@
-@import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Poppins:wght@400;500;600;700&display=swap');
 
 :root {
-  font-family: 'Outfit', system-ui, -apple-system, sans-serif;
+  font-family: 'Inter', system-ui, -apple-system, sans-serif;
   line-height: 1.5;
   font-weight: 400;
 
-  /* Refined Medical Color Palette */
-  --medical-white: #F8FAFC;
-  --cool-gray: #EEF2F7;
-  --medical-primary: #0F4C81;
-  --medical-secondary: #1E88E5;
-  --medical-teal: #14B8A6;
-  --medical-aqua: #22D3EE;
+  /* Premium Healthcare Color Palette */
+  --medical-primary: #14B8A6;    /* Teal */
+  --medical-primary-dark: #0F766E;
+  --medical-accent: #3B82F6;     /* Medical Blue */
+  --medical-highlight: #2DD4BF;  /* Mint */
+  --background-soft: #F8FAFC;    /* Slate 50 */
+  --text-main: #334155;          /* Slate 700 */
+  --text-muted: #64748B;         /* Slate 500 */
+  --border-light: #E2E8F0;       /* Slate 200 */
 
-  /* Brand Gradients */
-  --grad-primary: linear-gradient(135deg, #3B82F6, #0EA5E9);
-  --grad-medical: linear-gradient(135deg, #0F4C81, #14B8A6);
-  --grad-glow: linear-gradient(135deg, #22D3EE, #3B82F6);
+  /* Gradients */
+  --grad-teal: linear-gradient(135deg, #14B8A6, #0F766E);
+  --grad-soft: linear-gradient(135deg, #F8FAFC, #F1F5F9);
+  --grad-glow: linear-gradient(135deg, rgba(20, 184, 166, 0.1), rgba(59, 130, 246, 0.1));
 
-  /* Status Colors */
-  --status-approved: #10B981;
-  --status-pending: #F59E0B;
-  --status-rejected: #EF4444;
-  --status-info: #3B82F6;
+  /* Elevation & Depth */
+  --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.05);
+  --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
+  --shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1);
+  --shadow-xl: 0 20px 25px -5px rgb(0 0 0 / 0.1), 0 8px 10px -6px rgb(0 0 0 / 0.1);
+  --shadow-medical: 0 12px 24px -6px rgba(15, 118, 110, 0.12), 0 4px 12px -4px rgba(15, 118, 110, 0.08);
 
-  /* 3D Shadows & Glows */
-  --shadow-3d: 0 10px 30px rgba(15, 76, 129, 0.15);
-  --glow-3d: 0 0 20px rgba(34, 211, 238, 0.4);
-
-  /* UI Theming - Light Mode (Default) */
-  --bg-color: #E2E8F0; /* Slightly deeper gray for better card separation */
-  --panel-bg: rgba(255, 255, 255, 0.6);
-  --text-primary: #0F172A;
-  --text-secondary: #475569;
-  --border-color: rgba(15, 76, 129, 0.15);
-  
-  /* Buttons - Light Mode */
-  --btn-secondary-bg: #F1F5F9;
-  --btn-secondary-text: var(--medical-primary);
-  --btn-secondary-border: var(--medical-primary);
-  
   /* Glassmorphism Specs */
-  --glass-bg: rgba(255, 255, 255, 0.9);
-  --glass-border: rgba(255, 255, 255, 0.8);
-  --glass-blur: blur(25px);
-  --glass-shadow: 0 12px 48px rgba(15, 76, 129, 0.15);
-  --aurora-opacity: 0.25; /* Lower for light mode to prevent washout */
+  --glass-bg: rgba(255, 255, 255, 0.7);
+  --glass-border: rgba(255, 255, 255, 0.4);
+  --glass-blur: blur(12px);
+
+  /* Layout */
+  --radius-sm: 8px;
+  --radius-md: 12px;
+  --radius-lg: 16px;
+  --radius-xl: 24px;
 
   color-scheme: light;
-  color: var(--text-primary);
-  background: var(--bg-color);
+  background-color: var(--background-soft);
+  color: var(--text-main);
 }
 
-[data-theme='dark'] {
-  /* UI Theming - Dark Mode */
-  --bg-color: #020617;
-  --panel-bg: rgba(30, 41, 59, 0.4);
-  --text-primary: #F8FAFC;
-  --text-secondary: #94A3B8;
-  --border-color: rgba(255, 255, 255, 0.1);
 
-  /* Buttons - Dark Mode */
-  --btn-secondary-bg: rgba(255, 255, 255, 0.1);
-  --btn-secondary-text: #FFFFFF;
-  --btn-secondary-border: rgba(255, 255, 255, 0.2);
-
-  /* Glassmorphism Specs - Dark */
-  --glass-bg: rgba(15, 23, 42, 0.7);
-  --glass-border: rgba(255, 255, 255, 0.08);
-  --glass-shadow: 0 15px 50px rgba(0, 0, 0, 0.5);
-  --aurora-opacity: 0.5; /* Higher for dark mode */
-
-  color-scheme: dark;
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
 }
 
 body {
   min-height: 100vh;
-  margin: 0;
-  display: flex;
-  flex-direction: column;
-  background-color: var(--bg-color);
-  color: var(--text-primary);
-  transition: background-color 0.4s cubic-bezier(0.4, 0, 0.2, 1), color 0.4s ease;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
-  overflow-x: hidden;
+  background: var(--background-soft);
+  background: radial-gradient(circle at top right, rgba(20, 184, 166, 0.05), transparent 40%),
+              radial-gradient(circle at bottom left, rgba(59, 130, 246, 0.05), transparent 40%);
+  color: var(--text-main);
+  transition: background-color 0.3s ease;
 }
 
-/* Global Aurora Mesh Gradient Effect - Enhanced Opacity */
-body::before,
-body::after {
-  content: '';
-  position: fixed;
-  width: 70vw;
-  height: 70vw;
-  border-radius: 50%;
-  filter: blur(120px);
-  z-index: -10;
-  opacity: var(--aurora-opacity, 0.45);
-  animation: aurora-float 30s infinite alternate cubic-bezier(0.4, 0, 0.2, 1);
-  pointer-events: none;
-}
-
-body::before {
-  top: -20vw;
-  left: -20vw;
-  background: radial-gradient(circle, var(--medical-primary), transparent 60%);
-}
-
-body::after {
-  bottom: -20vw;
-  right: -20vw;
-  background: radial-gradient(circle, var(--medical-teal), transparent 60%);
-  animation-delay: -12.5s;
-}
-
-@keyframes aurora-float {
-  0% {
-    transform: translate(0, 0) scale(1) rotate(0deg);
-    opacity: 0.35;
-  }
-
-  50% {
-    transform: translate(15vw, 15vh) scale(1.1) rotate(90deg);
-    opacity: 0.5;
-  }
-
-  100% {
-    transform: translate(-5vw, 25vh) scale(0.95) rotate(180deg);
-    opacity: 0.4;
-  }
-}
-
-/* Typography */
-h1,
-h2,
-h3,
-h4,
-h5,
-h6 {
+h1, h2, h3, h4 {
+  font-family: 'Poppins', sans-serif;
   font-weight: 600;
-  line-height: 1.2;
-  margin-bottom: 0.5rem;
-  color: var(--text-primary);
+  color: var(--text-main);
 }
 
-a {
-  font-weight: 500;
-  color: var(--medical-primary);
-  text-decoration: none;
-  transition: color 0.3s ease;
-}
-
-a:hover {
-  color: var(--medical-secondary);
-}
-
-/* Base Glass Panel Utility */
+/* Glass Utility Classes */
 .glass-panel {
   background: var(--glass-bg);
   backdrop-filter: var(--glass-blur);
   -webkit-backdrop-filter: var(--glass-blur);
   border: 1px solid var(--glass-border);
-  box-shadow: var(--glass-shadow);
-  border-radius: 20px;
+  box-shadow: var(--shadow-medical);
+  border-radius: var(--radius-lg);
+  transition: transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1), box-shadow 0.3s ease;
 }
 
-/* Base Buttons */
+.floating-card {
+  background: white;
+  border-radius: var(--radius-lg);
+  padding: 1.5rem;
+  box-shadow: var(--shadow-medical);
+  border: 1px solid var(--border-light);
+  transition: all 0.3s ease;
+}
+
+.floating-card:hover {
+  transform: translateY(-4px);
+  box-shadow: var(--shadow-xl);
+}
+
+/* Buttons */
 button {
-  border-radius: 12px;
-  border: 1px solid transparent;
-  padding: 0.7em 1.4em;
-  font-size: 0.95em;
+  font-family: 'Inter', sans-serif;
   font-weight: 600;
-  font-family: inherit;
+  height: 48px; /* Standardize height for perfect alignment */
+  padding: 0 1.5rem;
+  border-radius: var(--radius-md);
   cursor: pointer;
-  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  transition: all 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.75rem;
+  letter-spacing: 0.01em;
+  border: none;
+  background: none;
+  line-height: 1;
+  white-space: nowrap;
 }
 
-button:focus,
-button:focus-visible {
-  outline: 2px solid var(--medical-primary);
-  outline-offset: 2px;
+.primary-btn {
+  background: var(--grad-teal);
+  color: white;
+  box-shadow: 0 8px 16px -4px rgba(20, 184, 166, 0.3);
 }
 
-/* Scrollbar */
+.primary-btn:hover {
+  transform: translateY(-2px) scale(1.02);
+  box-shadow: 0 12px 24px -8px rgba(20, 184, 166, 0.5);
+  filter: brightness(1.1);
+}
+
+.secondary-btn {
+  background: white;
+  color: var(--medical-primary);
+  border: 1px solid var(--border-light);
+  box-shadow: var(--shadow-sm);
+}
+
+.secondary-btn:hover {
+  background: #fdfdfd;
+  border-color: var(--medical-primary);
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-md);
+}
+
+/* Form Inputs */
+.glass-input {
+  width: 100%;
+  padding: 0.75rem 1rem;
+  background: white;
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-md);
+  font-family: inherit;
+  transition: all 0.2s ease;
+}
+
+.glass-input:focus {
+  outline: none;
+  border-color: var(--medical-primary);
+  box-shadow: 0 0 0 4px rgba(20, 184, 166, 0.1);
+}
+
+/* Data Table */
+.data-table {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+}
+
+.data-table th {
+  padding: 1rem;
+  text-align: left;
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  border-bottom: 2px solid var(--border-light);
+}
+
+.data-table td {
+  padding: 1rem;
+  border-bottom: 1px solid var(--border-light);
+  font-size: 0.9375rem;
+}
+
+.data-table tr:last-child td {
+  border-bottom: none;
+}
+
+.data-table tr:hover td {
+  background-color: rgba(20, 184, 166, 0.02);
+}
+
+/* Animations */
+@keyframes slideUp {
+  from { opacity: 0; transform: translateY(20px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.animate-fade-in {
+  animation: slideUp 0.5s ease-out forwards;
+}
+
+/* Custom Scrollbar */
 ::-webkit-scrollbar {
-  width: 8px;
-  height: 8px;
+  width: 10px;
 }
 
 ::-webkit-scrollbar-track {
@@ -195,29 +203,11 @@ button:focus-visible {
 }
 
 ::-webkit-scrollbar-thumb {
-  background: var(--medical-primary);
-  opacity: 0.5;
-  border-radius: 8px;
-  border: 2px solid var(--bg-color);
+  background: #CBD5E1;
+  border-radius: 20px;
+  border: 3px solid var(--background-soft);
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: rgba(255, 255, 255, 0.25);
-}
-
-/* Animations */
-@keyframes fadeIn {
-  from {
-    opacity: 0;
-    transform: translateY(15px);
-  }
-
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
-}
-
-.animate-fade-in {
-  animation: fadeIn 0.6s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+  background: #94A3B8;
 }

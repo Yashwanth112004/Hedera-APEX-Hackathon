@@ -83,40 +83,42 @@ const AuditLogs = ({ auditLogContract }) => {
   };
 
   return (
-    <div className="dashboard animate-fade-in" style={{ padding: '2rem' }}>
-      <div className="dashboard-header" style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '2rem' }}>
+    <div className="dashboard animate-fade-in">
+      <div className="dashboard-header">
         <div>
-          <h2 style={{ fontSize: '1.8rem', fontWeight: '800' }}>DPDP Blockchain Audit Trail</h2>
-          <p style={{ color: 'var(--text-secondary)' }}>Immutable record of all patient data interactions.</p>
+          <h2>Compliance Audit Trail</h2>
+          <p style={{ color: 'var(--text-muted)' }}>Immutable ledger records of all patient data interactions and consent lifecycle events.</p>
         </div>
-        <button className="secondary-btn" onClick={fetchLogs} disabled={loading}>
-          {loading ? "Refreshing..." : "Refresh Logs"}
-        </button>
+        <div className="dashboard-actions">
+          <button className="secondary-btn" onClick={fetchLogs} disabled={loading}>
+            {loading ? "..." : "Sync Audit Logs"}
+          </button>
+        </div>
       </div>
 
-      <div className="glass-panel" style={{ padding: '2rem', marginBottom: '2rem' }}>
-        <div style={{ display: 'flex', gap: '2rem', marginBottom: '2rem' }}>
-          <div className="filter-group">
-            <label>Context:</label>
+      <div className="glass-panel" style={{ padding: '2.5rem', marginBottom: '2rem' }}>
+        <div style={{ display: 'flex', gap: '2rem', marginBottom: '2rem', alignItems: 'flex-end' }}>
+          <div className="form-group" style={{ marginBottom: 0, width: '200px' }}>
+            <label>Context Filter</label>
             <select value={filter} onChange={(e) => setFilter(e.target.value)} className="glass-input">
               <option value="all">All Logs</option>
               <option value="access">Data Access</option>
               <option value="consent">Consent Actions</option>
             </select>
           </div>
-          <div className="filter-group" style={{ flex: 1 }}>
-            <label>Search Address/Purpose:</label>
+          <div className="form-group" style={{ marginBottom: 0, flex: 1 }}>
+            <label>Search Identity or Purpose</label>
             <input
               type="text"
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
               className="glass-input"
-              placeholder="0x..."
+              placeholder="Enter wallet address (0x...) or purpose"
             />
           </div>
         </div>
 
-        <div className="table-container" style={{ overflowX: 'auto' }}>
+        <div className="table-container">
           <table className="data-table">
             <thead>
               <tr>
@@ -126,28 +128,28 @@ const AuditLogs = ({ auditLogContract }) => {
                 <th>Action</th>
                 <th>Purpose</th>
                 <th>Time (UTC)</th>
-                <th>Verification</th>
+                <th>Ledger</th>
               </tr>
             </thead>
             <tbody>
               {loading ? (
-                <tr><td colSpan="7" style={{ textAlign: 'center', padding: '4rem' }}>Querying Blockchain...</td></tr>
+                <tr><td colSpan="7" style={{ textAlign: 'center', padding: '4rem', color: 'var(--text-muted)' }}>Querying Blockchain Infrastructure...</td></tr>
               ) : filteredLogs.length === 0 ? (
-                <tr><td colSpan="7" style={{ textAlign: 'center', padding: '4rem' }}>No audit records found.</td></tr>
+                <tr><td colSpan="7" style={{ textAlign: 'center', padding: '4rem', color: 'var(--text-muted)' }}>No compliant audit records found.</td></tr>
               ) : (
                 filteredLogs.map((log) => (
                   <tr key={log.id}>
-                    <td>#{log.id}</td>
-                    <td><span className="address-cell font-mono">{truncateAddress(log.patientAddress)}</span></td>
-                    <td><span className="address-cell font-mono">{truncateAddress(log.hospitalAddress)}</span></td>
+                    <td><span style={{ fontWeight: '500' }}>#{log.id}</span></td>
+                    <td><code style={{ fontSize: '0.85rem' }}>{truncateAddress(log.patientAddress)}</code></td>
+                    <td><code style={{ fontSize: '0.85rem' }}>{truncateAddress(log.hospitalAddress)}</code></td>
                     <td>
-                      <span className="action-badge" style={{ color: getActionColor(log.action) }}>
+                      <span className="role-badge" style={{ background: getActionColor(log.action).includes('var') ? getActionColor(log.action) : 'var(--medical-primary)', fontSize: '0.75rem' }}>
                         {log.action}
                       </span>
                     </td>
-                    <td>{log.purpose}</td>
-                    <td>{formatDate(log.timestamp)}</td>
-                    <td style={{ color: 'var(--status-approved)' }}>✔ Verified</td>
+                    <td><span style={{ fontSize: '0.9rem' }}>{log.purpose}</span></td>
+                    <td><span style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>{formatDate(log.timestamp)}</span></td>
+                    <td style={{ color: 'var(--medical-primary)', fontWeight: 'bold', fontSize: '0.8rem' }}>✓ Hedera</td>
                   </tr>
                 ))
               )}

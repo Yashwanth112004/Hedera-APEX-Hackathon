@@ -7,6 +7,7 @@ import { WALLET_MAPPER_ADDRESS, WALLET_MAPPER_ABI } from "./utils/idMappingHelpe
 
 import Navbar from "./components/Navbar";
 import Sidebar from "./components/Sidebar";
+import MedicalBackground from "./components/MedicalBackground";
 
 import PatientDashboard from "./pages/PatientDashboard";
 import HospitalDashboard from "./pages/HospitalDashboard";
@@ -93,21 +94,6 @@ function App() {
   const [authenticated, setAuthenticated] = useState(false);
   const [showContextSelection, setShowContextSelection] = useState(false);
   const [availableRoles, setAvailableRoles] = useState(["Patient"]);
-  const [theme, setTheme] = useState(localStorage.getItem('app-theme') || 'light');
-
-  // THEME MANAGEMENT
-  useEffect(() => {
-    // Apply theme to document element for global CSS variables
-    document.documentElement.setAttribute('data-theme', theme);
-    // Also apply to body for some legacy styles
-    document.body.className = theme === 'dark' ? 'dark-mode' : '';
-    localStorage.setItem('app-theme', theme);
-  }, [theme]);
-
-  const toggleTheme = () => {
-    const nextTheme = theme === 'light' ? 'dark' : 'light';
-    setTheme(nextTheme);
-  };
 
   const [reqOrgName, setReqOrgName] = useState("");
   const [reqWallet, setReqWallet] = useState("");
@@ -206,20 +192,23 @@ function App() {
       const accounts = await provider.send("eth_requestAccounts", []);
       const wallet = accounts[0];
 
+      // Fix: Normalize address to checksum to prevent isAdmin lookup failures
+      const safeWallet = ethers.getAddress(wallet);
+
       const roleContract = new ethers.Contract(RBAC_CONTRACT_ADDRESS, roleABI, provider);
-      const isSystemAdmin = await roleContract.isAdmin(wallet);
+      const isSystemAdmin = await roleContract.isAdmin(safeWallet);
 
       if (!isSystemAdmin) {
         toast.error("Access Denied: Wallet is not a registered administrator");
         return;
       }
 
-      setAccount(wallet);
+      setAccount(safeWallet);
       setRole("admin");
       toast.success("Admin Portal Accessed Successfully");
     } catch (err) {
       console.error(err);
-      toast.error("Admin connection failed");
+      toast.error("Admin connection failed: " + (err.message || "Unknown error"));
     }
   };
 
@@ -340,52 +329,118 @@ function App() {
         <>
           <Navbar
             account={account}
+            onDisconnect={disconnectWallet}
+            role={role}
             onConnect={connectWallet}
             onRegister={() => setShowRoleForm(true)}
             onAdmin={connectAdmin}
-            theme={theme}
-            onToggleTheme={toggleTheme}
           />
-          <div className="landing-page" style={{ padding: '4rem 2rem', maxWidth: '1200px', margin: '0 auto' }}>
-            <div className="landing-header animate-fade-in" style={{ textAlign: 'center', marginBottom: '4rem' }}>
-              <h1 className="app-title" style={{ fontSize: '3.5rem', marginBottom: '1rem', background: 'var(--grad-primary)', WebkitBackgroundClip: 'text', backgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>
-                Decentralized Health Consent
-              </h1>
-              <p className="app-description" style={{ color: 'var(--text-secondary)', fontSize: '1.2rem', maxWidth: '800px', margin: '0 auto', lineHeight: '1.6' }}>
-                Empowering patients with absolute control over their medical data through immutable, blockchain-backed governance in strict compliance with the Digital Personal Data Protection (DPDP) Act 2023.
-              </p>
+          <div className="landing-page animate-fade-in" style={{ padding: '80px 0 0 0', maxWidth: '100%', margin: '0', position: 'relative', overflow: 'hidden' }}>
+            <MedicalBackground />
+            
+            {/* Professional Hero Section */}
+            <div className="hero-section" style={{ 
+              background: 'radial-gradient(circle at top, #fff 0%, #f8faff 100%)', 
+              borderBottom: '1px solid var(--border-light)', 
+              padding: '8rem 2rem', 
+              textAlign: 'center',
+              position: 'relative'
+            }}>
+              <div className="glass-panel" style={{ 
+                maxWidth: '1200px', 
+                margin: '0 auto', 
+                padding: '4rem 2rem',
+                background: 'rgba(255, 255, 255, 0.4)',
+                border: '1px solid rgba(255, 255, 255, 0.8)'
+              }}>
+                <div className="status-badge" style={{ display: 'inline-flex', padding: '0.6rem 1.5rem', background: '#F0FDFA', color: '#0D9488', borderRadius: '30px', marginBottom: '2.5rem', fontSize: '0.85rem', fontWeight: '800', border: '1px solid #CCFBF1', letterSpacing: '0.1em' }}>
+                  ✚ 24/7 BLOCKCHAIN SECURED ACCESS
+                </div>
+                <h1 className="hero-title" style={{ 
+                  color: '#1E3A8A', 
+                  fontSize: '5.2rem', 
+                  marginBottom: '1.5rem', 
+                  fontWeight: '900',
+                  lineHeight: '1.1',
+                  letterSpacing: '-0.04em'
+                }}>
+                  Patient-Centric <br/> <span style={{ color: '#14B8A6' }}>Data Governance</span>
+                </h1>
+                <p className="hero-subtitle" style={{ fontSize: '1.5rem', color: '#475569', maxWidth: '850px', margin: '0 auto', lineHeight: '1.6', fontWeight: '500' }}>
+                  Empowering the future of clinical data privacy. Securely manage your medical history with immutable blockchain consent, in total alignment with the <span style={{ color: '#1E3A8A', fontWeight: '700' }}>DPDP Act 2023.</span>
+                </p>
+                <div style={{ marginTop: '3.5rem', display: 'flex', gap: '2rem', justifyContent: 'center' }}>
+                  <button className="primary-btn" onClick={connectWallet} style={{ borderRadius: '50px', background: 'var(--medical-primary)' }}>
+                     Access Patient Portal
+                  </button>
+                  <button className="secondary-btn" onClick={() => setShowRoleForm(true)} style={{ borderRadius: '50px', background: 'white' }}>
+                     Organization Registration
+                  </button>
+                </div>
+              </div>
             </div>
 
-            <div className="dpdp-features-grid animate-fade-in" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '2rem', animationDelay: '0.2s' }}>
-              <div className="feature-card glass-panel" style={{ padding: '2.5rem', borderTop: '4px solid var(--status-info)' }}>
-                <h3 style={{ fontSize: '1.5rem', marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: '0.75rem' }}><span>🛡️</span> Notice & Consent</h3>
-                <p style={{ color: 'var(--text-secondary)', lineHeight: '1.6' }}>Section 5 & 6 specifies that data processing requires explicit, itemized consent. Our smart contracts guarantee that fiduciaries cannot access clinical data without cryptographically verifiable consent tokens issued by the patient.</p>
+            {/* Features Area */}
+            <div className="dashboard-grid" style={{ maxWidth: '1400px', margin: '0 auto', padding: '4rem 2rem' }}>
+              <div className="feature-card" style={{ borderLeft: '6px solid #1E40AF' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+                  <div style={{ background: '#EFF6FF', padding: '1rem', borderRadius: '12px' }}>🛡️</div>
+                  <h3 style={{ fontSize: '1.6rem', color: '#1E40AF' }}>Notice & Consent</h3>
+                </div>
+                <p style={{ color: '#64748B', lineHeight: '1.8', fontSize: '1.05rem' }}>Itemized consent management under Section 5 & 6. Our ledger ensures clinical providers cannot access your records without your explicit digital authorization.</p>
+                <span style={{ color: '#1E40AF', fontWeight: '700', fontSize: '0.8rem' }}>LEARN MORE →</span>
               </div>
 
-              <div className="feature-card glass-panel" style={{ padding: '2.5rem', borderTop: '4px solid var(--status-rejected)' }}>
-                <h3 style={{ fontSize: '1.5rem', marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: '0.75rem' }}><span>🗑️</span> Right to Erasure</h3>
-                <p style={{ color: 'var(--text-secondary)', lineHeight: '1.6' }}>Under Section 12, Data Principals have the right to request deletion of their data. Patients can trigger an immediate on-chain "Erasure Request" event, legally mandating the fiduciary to purge medical records.</p>
+              <div className="feature-card" style={{ borderLeft: '6px solid #DC2626' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+                  <div style={{ background: '#FEF2F2', padding: '1rem', borderRadius: '12px' }}>🗑️</div>
+                  <h3 style={{ fontSize: '1.6rem', color: '#DC2626' }}>Right to Erasure</h3>
+                </div>
+                <p style={{ color: '#64748B', lineHeight: '1.8', fontSize: '1.05rem' }}>Full Section 12 compliance. Exercise your right to be forgotten. Trigger 1-click ledger-anchored requests to purge your clinical footprint across the network.</p>
+                <span style={{ color: '#DC2626', fontWeight: '700', fontSize: '0.8rem' }}>EXERCISE RIGHT →</span>
               </div>
 
-              <div className="feature-card glass-panel" style={{ padding: '2.5rem', borderTop: '4px solid var(--status-approved)' }}>
-                <h3 style={{ fontSize: '1.5rem', marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: '0.75rem' }}><span>🔍</span> Immutable Audit</h3>
-                <p style={{ color: 'var(--text-secondary)', lineHeight: '1.6' }}>Section 8 requires Fiduciaries to maintain security safeguards. The Hedera ledger acts as an undisputed, tamper-proof audit trail for every single piece of accessed medical data, accessible instantly by Data Protection Officers.</p>
+              <div className="feature-card" style={{ borderLeft: '6px solid #059669' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+                  <div style={{ background: '#ECFDF5', padding: '1rem', borderRadius: '12px' }}>🔍</div>
+                  <h3 style={{ fontSize: '1.6rem', color: '#059669' }}>Audit Hierarchy</h3>
+                </div>
+                <p style={{ color: '#64748B', lineHeight: '1.8', fontSize: '1.05rem' }}>Real-time transparency for data interactions. Fiduciaries are held accountable through an irreversible Hedera blockchain audit trail of all access events.</p>
+                <span style={{ color: '#059669', fontWeight: '700', fontSize: '0.8rem' }}>VIEW TRAIL →</span>
               </div>
             </div>
           </div>
         </>
       ) : showContextSelection ? (
-        <div className="context-selection-screen">
-          <div className="glass-panel" style={{ maxWidth: '800px', margin: '4rem auto', textAlign: 'center', padding: '4rem' }}>
-            <h2>Identity Verified</h2>
-            <p style={{ marginBottom: '3rem' }}>Logged in as {account.slice(0, 6)}...{account.slice(-4)}. Select your portal:</p>
-            <div className="context-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '2rem' }}>
+        <div className="context-selection-screen animate-fade-in" style={{ minHeight: '80vh', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <div className="glass-panel" style={{ maxWidth: '900px', width: '90%', padding: '4rem', textAlign: 'center' }}>
+            <h2 style={{ fontSize: '2.5rem', marginBottom: '1rem', fontWeight: '800' }}>Identity Verified</h2>
+            <p style={{ color: 'var(--text-muted)', marginBottom: '3.5rem', fontSize: '1.1rem' }}>
+              Authentication successful for <code>{account.slice(0, 10)}...{account.slice(-8)}</code>. <br/>
+              Please select the clinical portal you wish to access:
+            </p>
+            <div className="dashboard-grid" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))' }}>
               {availableRoles.map(r => (
-                <button key={r} className="context-card glass-panel secondary-btn" onClick={() => { setRole(r.toLowerCase()); setShowContextSelection(false); }} style={{ padding: '2.5rem 1.5rem', cursor: 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'center', transition: 'all 0.4s cubic-bezier(0.4, 0, 0.2, 1)' }}>
-                  <div style={{ fontSize: '3rem', marginBottom: '1rem' }}>
-                    {r === "Patient" ? "👤" : r === "Hospital" ? "🏥" : r === "Admin" ? "🛡️" : r === "Doctor" ? "🩺" : "🏢"}
+                <button 
+                  key={r} 
+                  className="glass-panel floating-card" 
+                  onClick={() => { setRole(r.toLowerCase()); setShowContextSelection(false); }} 
+                  style={{ 
+                    padding: '3rem 1.5rem', 
+                    cursor: 'pointer', 
+                    display: 'flex', 
+                    flexDirection: 'column', 
+                    alignItems: 'center', 
+                    transition: 'all 0.4s ease',
+                    border: '1px solid var(--glass-border)',
+                    background: 'rgba(255,255,255,0.03)'
+                  }}
+                >
+                  <div style={{ fontSize: '3.5rem', marginBottom: '1.5rem', filter: 'drop-shadow(0 0 10px rgba(255,255,255,0.2))' }}>
+                    {r === "Patient" ? "👤" : r === "Hospital" ? "🏥" : r === "Admin" ? "🛡️" : r === "Doctor" ? "🩺" : r === "Lab" ? "🧪" : "🏢"}
                   </div>
-                  <h3>{r} Portal</h3>
+                  <h3 style={{ fontSize: '1.25rem', color: 'var(--medical-primary)' }}>{r} Portal</h3>
+                  <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '0.5rem', textTransform: 'uppercase', letterSpacing: '0.1em' }}>Secure Access</span>
                 </button>
               ))}
             </div>
@@ -397,10 +452,11 @@ function App() {
             account={account} 
             role={role} 
             onDisconnect={disconnectWallet} 
-            theme={theme}
-            onToggleTheme={toggleTheme}
+            onConnect={connectWallet}
+            onRegister={() => setShowRoleForm(true)}
+            onAdmin={connectAdmin}
           />
-          <div className="app-body">
+          <div className="app-body" style={{ marginTop: '80px' }}>
             {role && <Sidebar role={role} activeTab={activeTab} onTabChange={handleTabChange} />}
             <main className="main-content">
               {activeTab === "audit" ? <AuditLogs auditLogContract={auditLogContract} /> : renderDashboard()}

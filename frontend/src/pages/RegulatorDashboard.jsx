@@ -80,18 +80,23 @@ const RegulatorDashboard = () => {
 
   return (
     <div className="dashboard animate-fade-in">
-      <div className="dashboard-header">
-        <h2>Regulator Dashboard</h2>
-        <div className="compliance-indicator">
-          <span className="blockchain-verified">✓ Blockchain Verified</span>
-          <span className="dpdp-compliant">✓ DPDP Act 2023 Compliant</span>
+      <div className="dashboard-header" style={{ marginBottom: '2.5rem' }}>
+        <div>
+          <h1 style={{ fontSize: '2.5rem', fontWeight: '800', color: 'var(--medical-primary)', marginBottom: '0.5rem', letterSpacing: '-0.02em' }}>
+            Compliance Regulator Dashboard
+          </h1>
+          <p style={{ color: 'var(--text-muted)', fontSize: '1.1rem' }}>Real-time compliance monitoring and blockchain-anchored audit trails.</p>
+        </div>
+        <div className="compliance-indicator" style={{ display: 'flex', gap: '1rem' }}>
+          <span className="role-badge" style={{ background: 'var(--grad-teal)', fontSize: '0.75rem' }}>✓ Blockchain Verified</span>
+          <span className="role-badge" style={{ background: 'var(--grad-blue)', fontSize: '0.75rem' }}>✓ DPDP Act 2023 Compliant</span>
         </div>
       </div>
 
-      <div className="dashboard-cards">
+      <div className="dashboard-grid">
         {dashboardCards.map((card, index) => (
-          <div key={index} className="dashboard-card glass-panel" style={{ color: card.color }}>
-            <div className="card-icon" style={{ backgroundColor: `var(--panel-bg)`, color: card.color, boxShadow: 'var(--shadow-3d)' }}>
+          <div key={index} className="dashboard-card floating-card" style={{ borderTop: `4px solid ${card.color}` }}>
+            <div className="card-icon" style={{ backgroundColor: `${card.color}10`, color: card.color }}>
               {card.icon}
             </div>
             <div className="card-content">
@@ -102,28 +107,32 @@ const RegulatorDashboard = () => {
         ))}
       </div>
 
-      <div className="dashboard-tabs">
+      <div className="dashboard-tabs" style={{ marginBottom: '2rem', background: 'rgba(255,255,255,0.05)', padding: '0.5rem', borderRadius: '12px', display: 'inline-flex', gap: '0.5rem' }}>
         <button
           className={`tab-btn ${selectedTab === 'overview' ? 'active' : ''}`}
           onClick={() => setSelectedTab('overview')}
+          style={{ padding: '0.6rem 1.2rem', borderRadius: '8px', border: 'none', background: selectedTab === 'overview' ? 'var(--grad-teal)' : 'transparent', color: selectedTab === 'overview' ? '#fff' : 'var(--text-muted)', cursor: 'pointer', transition: 'all 0.3s ease' }}
         >
           Overview
         </button>
         <button
           className={`tab-btn ${selectedTab === 'consents' ? 'active' : ''}`}
           onClick={() => setSelectedTab('consents')}
+          style={{ padding: '0.6rem 1.2rem', borderRadius: '8px', border: 'none', background: selectedTab === 'consents' ? 'var(--grad-teal)' : 'transparent', color: selectedTab === 'consents' ? '#fff' : 'var(--text-muted)', cursor: 'pointer', transition: 'all 0.3s ease' }}
         >
           All Consents
         </button>
         <button
           className={`tab-btn ${selectedTab === 'audit' ? 'active' : ''}`}
           onClick={() => setSelectedTab('audit')}
+          style={{ padding: '0.6rem 1.2rem', borderRadius: '8px', border: 'none', background: selectedTab === 'audit' ? 'var(--grad-teal)' : 'transparent', color: selectedTab === 'audit' ? '#fff' : 'var(--text-muted)', cursor: 'pointer', transition: 'all 0.3s ease' }}
         >
           Audit Logs
         </button>
         <button
           className={`tab-btn ${selectedTab === 'violations' ? 'active' : ''}`}
           onClick={() => setSelectedTab('violations')}
+          style={{ padding: '0.6rem 1.2rem', borderRadius: '8px', border: 'none', background: selectedTab === 'violations' ? 'var(--grad-teal)' : 'transparent', color: selectedTab === 'violations' ? '#fff' : 'var(--text-muted)', cursor: 'pointer', transition: 'all 0.3s ease' }}
         >
           Violations
         </button>
@@ -131,39 +140,39 @@ const RegulatorDashboard = () => {
 
       {selectedTab === 'overview' && (
         <div className="dashboard-section glass-panel">
-          <h3>Compliance Overview</h3>
-          <div className="compliance-grid">
-            <div className="compliance-card">
-              <h4>Consent Management</h4>
-              <div className="compliance-metric">
-                <span className="metric-label">Consent Rate:</span>
-                <span className="metric-value">94.2%</span>
+          <h3 style={{ marginBottom: '1.5rem' }}>Compliance Overview</h3>
+          <div className="dashboard-grid" style={{ gridTemplateColumns: 'repeat(3, 1fr)' }}>
+            <div className="floating-card" style={{ padding: '1.5rem' }}>
+              <h4 style={{ color: 'var(--medical-primary)', marginBottom: '1rem' }}>Consent Management</h4>
+              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
+                <span style={{ color: 'var(--text-muted)' }}>Consent Rate:</span>
+                <span style={{ color: 'var(--status-approved)', fontWeight: 'bold' }}>94.2%</span>
               </div>
-              <div className="compliance-metric">
-                <span className="metric-label">Average Duration:</span>
-                <span className="metric-value">45 days</span>
-              </div>
-            </div>
-            <div className="compliance-card">
-              <h4>Data Access</h4>
-              <div className="compliance-metric">
-                <span className="metric-label">Authorized Access:</span>
-                <span className="metric-value">1,247</span>
-              </div>
-              <div className="compliance-metric">
-                <span className="metric-label">Unauthorized Attempts:</span>
-                <span className="metric-value">3</span>
+              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                <span style={{ color: 'var(--text-muted)' }}>Average Duration:</span>
+                <span style={{ fontWeight: '500' }}>45 days</span>
               </div>
             </div>
-            <div className="compliance-card">
-              <h4>Erasure Requests</h4>
-              <div className="compliance-metric">
-                <span className="metric-label">Requests Received:</span>
-                <span className="metric-value">47</span>
+            <div className="floating-card" style={{ padding: '1.5rem' }}>
+              <h4 style={{ color: 'var(--medical-primary)', marginBottom: '1rem' }}>Data Access</h4>
+              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
+                <span style={{ color: 'var(--text-muted)' }}>Authorized Access:</span>
+                <span style={{ fontWeight: 'bold' }}>1,247</span>
               </div>
-              <div className="compliance-metric">
-                <span className="metric-label">Processed:</span>
-                <span className="metric-value">45</span>
+              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                <span style={{ color: 'var(--text-muted)' }}>Unauthorized Attempts:</span>
+                <span style={{ color: 'var(--status-rejected)' }}>3</span>
+              </div>
+            </div>
+            <div className="floating-card" style={{ padding: '1.5rem' }}>
+              <h4 style={{ color: 'var(--medical-primary)', marginBottom: '1rem' }}>Erasure Requests</h4>
+              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
+                <span style={{ color: 'var(--text-muted)' }}>Requests Received:</span>
+                <span style={{ fontWeight: 'bold' }}>47</span>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                <span style={{ color: 'var(--text-muted)' }}>Processed:</span>
+                <span style={{ color: 'var(--status-approved)' }}>45</span>
               </div>
             </div>
           </div>

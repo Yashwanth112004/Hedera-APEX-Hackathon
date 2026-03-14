@@ -62,8 +62,13 @@ const HospitalDashboard = ({
 
   return (
     <div className="dashboard animate-fade-in">
-      <div className="dashboard-header">
-        <h2>Hospital Dashboard</h2>
+      <div className="dashboard-header" style={{ marginBottom: '2.5rem' }}>
+        <div>
+          <h1 style={{ fontSize: '2.5rem', fontWeight: '800', color: 'var(--medical-primary)', marginBottom: '0.5rem', letterSpacing: '-0.02em' }}>
+            Hospital Enterprise Portal
+          </h1>
+          <p style={{ color: 'var(--text-muted)', fontSize: '1.1rem' }}>Secure institutional data governance and patient event verification.</p>
+        </div>
         <div className="dashboard-actions">
           <button
             className="primary-btn"
@@ -80,10 +85,10 @@ const HospitalDashboard = ({
         </div>
       </div>
 
-      <div className="dashboard-cards">
+      <div className="dashboard-grid">
         {dashboardCards.map((card, index) => (
-          <div key={index} className="dashboard-card glass-panel" style={{ color: card.color }}>
-            <div className="card-icon" style={{ backgroundColor: `var(--panel-bg)`, color: card.color, boxShadow: 'var(--shadow-3d)' }}>
+          <div key={index} className="dashboard-card floating-card" style={{ borderTop: `4px solid ${card.color}` }}>
+            <div className="card-icon" style={{ backgroundColor: `${card.color}10`, color: card.color }}>
               {card.icon}
             </div>
             <div className="card-content">
@@ -97,10 +102,10 @@ const HospitalDashboard = ({
       <div className="dashboard-section glass-panel">
         <h3>Patient Data Access</h3>
         {scannedAddress ? (
-          <div className="scanned-result">
-            <div className="scanned-info">
-              <p><strong>Scanned Patient Address:</strong></p>
-              <p className="address">{scannedAddress}</p>
+          <div className="floating-card" style={{ marginTop: '1.5rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <div>
+              <p style={{ fontSize: '0.9rem', color: 'var(--text-muted)', marginBottom: '0.5rem', textTransform: 'uppercase' }}>Scanned Patient Address</p>
+              <code style={{ fontSize: '1.1rem', color: 'var(--medical-primary)' }}>{scannedAddress}</code>
             </div>
             <button
               className="primary-btn"
@@ -110,14 +115,10 @@ const HospitalDashboard = ({
             </button>
           </div>
         ) : (
-          <div className="no-scan-result">
-            <p>Scan a patient QR code to access their data</p>
-            <button
-              className="secondary-btn"
-              onClick={() => setShowScanner(true)}
-            >
-              Open Scanner
-            </button>
+          <div style={{ textAlign: 'center', padding: '3rem', cursor: 'pointer' }} onClick={() => setShowScanner(true)}>
+            <div style={{ fontSize: '3rem', marginBottom: '1rem' }}>📷</div>
+            <p style={{ color: 'var(--text-muted)', marginBottom: '1.5rem' }}>Scan a patient QR code to access their data</p>
+            <button className="secondary-btn">Open Scanner</button>
           </div>
         )}
       </div>

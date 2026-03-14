@@ -8,6 +8,9 @@ const DoctorDashboard = ({ account, consentContract, auditLogContract, accessCon
     const [patientWallet, setPatientWallet] = useState('');
     const [requestPurpose, setRequestPurpose] = useState('');
     const [activeConsents, setActiveConsents] = useState([]);
+    const [linkedRecords, setLinkedRecords] = useState([]);
+    const [pendingSentRequests, setPendingSentRequests] = useState([]);
+    const [interactionHistory, setInteractionHistory] = useState([]); // Array of { wallet, shortId }
     const [loading, setLoading] = useState(false);
 
     // IPFS Decryption State
@@ -22,6 +25,120 @@ const DoctorDashboard = ({ account, consentContract, auditLogContract, accessCon
     const [rxDosage, setRxDosage] = useState('');
     const [rxDuration, setRxDuration] = useState('');
     const [isUploading, setIsUploading] = useState(false);
+
+    // --- NEW: Global Interaction History Fetching ---
+    React.useEffect(() => {
+        const loadHistory = async () => {
+            if (!auditLogContract || !account) return;
+            try {
+                const provider = new ethers.BrowserProvider(window.ethereum);
+                const readAudit = auditLogContract.connect(provider);
+                const logs = await readAudit.getLogs();
+                
+                const normalizedDoctor = account.toLowerCase();
+                // Filter for any interaction where this doctor was the fiduciary
+                const uniquePatients = new Set();
+                logs.forEach(log => {
+                    if (log.dataFiduciary.toLowerCase() === normalizedDoctor) {
+                        uniquePatients.add(log.dataPrincipal);
+                    }
+                });
+
+                const historyList = [];
+                for (const wallet of uniquePatients) {
+                    let short = "N/A";
+                    if (walletMapperContract) {
+                        try {
+                            const mapperRead = walletMapperContract.connect(provider);
+                            short = await mapperRead.getShortId(wallet);
+                        } catch (e) { console.warn("Short ID resolve failed", e); }
+                    }
+                    historyList.push({ wallet, shortId: short });
+                }
+
+                setInteractionHistory(historyList);
+            } catch (err) {
+                console.error("Failed to fetch interaction history:", err);
+            }
+        };
+        loadHistory();
+    }, [auditLogContract, account]);
+    
+    // Auto-sync all history details once history is resolved
+    React.useEffect(() => {
+        if (interactionHistory.length > 0) {
+            syncAllHistory();
+        }
+    }, [interactionHistory]);
+
+    // Cleanup: Function to auto-fetch all history statuses
+    const syncAllHistory = async () => {
+        if (!consentContract || interactionHistory.length === 0) return;
+        setLoading(true);
+        try {
+            const provider = new ethers.BrowserProvider(window.ethereum);
+            const readConsent = consentContract.connect(provider);
+            const readMedical = medicalRecordsContract.connect(provider);
+            const normalizedDoctor = account.toLowerCase();
+
+            const allLinked = [];
+            const allPending = [];
+            const allConsents = [];
+
+            for (const item of interactionHistory) {
+                const patient = item.wallet;
+                const shortId = item.shortId;
+                
+                // Fetch Consents
+                const patientConsents = await readConsent.getPatientConsents(patient);
+                patientConsents.forEach(c => {
+                    if (c.isActive && c.dataFiduciary.toLowerCase() === normalizedDoctor) {
+                        if (c.dataHash) {
+                            c.dataHash.split(',').forEach(cid => {
+                                if (cid.trim()) allLinked.push({ 
+                                    cid: cid.trim(), 
+                                    purpose: c.purpose, 
+                                    patient, 
+                                    shortId,
+                                    sharedAt: c.grantedAt 
+                                });
+                            });
+                        }
+                    }
+                });
+
+                // Fetch Pending Requests
+                const pending = await readConsent.getPendingRequests(patient);
+                pending.filter(r => r.provider.toLowerCase() === normalizedDoctor).forEach(r => {
+                    allPending.push({ ...r, patient, shortId });
+                });
+
+                // Fetch General Records
+                const records = await readMedical.getPatientRecords(patient);
+                records.forEach(r => {
+                    allConsents.push({
+                        id: r.id.toString(),
+                        type: r.recordType,
+                        status: "Authorized",
+                        cid: r.cid,
+                        provider: r.provider,
+                        patient,
+                        shortId
+                    });
+                });
+            }
+
+            setLinkedRecords(allLinked);
+            setPendingSentRequests(allPending);
+            setActiveConsents(allConsents);
+            toast.success("Global history synced!");
+        } catch (err) {
+            console.error(err);
+            toast.error("Failed to sync global history");
+        } finally {
+            setLoading(false);
+        }
+    };
 
     const checkPatientConsents = async () => {
         if (!patientWallet) {
@@ -110,8 +227,43 @@ const DoctorDashboard = ({ account, consentContract, auditLogContract, accessCon
                 }));
 
                 setActiveConsents(formatted);
-                if (formatted.length === 0) toast.warning("No records found for this patient.");
-                else toast.success(`Found ${formatted.length} mapped records`);
+
+                // --- NEW: Fetch specifically linked records from ConsentManager ---
+                if (consentContract) {
+                    const consentReadContract = consentContract.connect(provider);
+                    const patientConsents = await consentReadContract.getPatientConsents(targetWallet);
+                    
+                    const normalizedDoctor = account.toLowerCase();
+                    const linked = [];
+
+                    patientConsents.forEach(c => {
+                        if (c.isActive && c.dataFiduciary.toLowerCase() === normalizedDoctor && c.dataHash) {
+                            const cids = c.dataHash.split(',');
+                            cids.forEach(cid => {
+                                if (cid.trim()) {
+                                    linked.push({
+                                        cid: cid.trim(),
+                                        purpose: c.purpose,
+                                        expiry: c.expiry,
+                                        sharedAt: c.grantedAt
+                                    });
+                                }
+                            });
+                        }
+                    });
+                    setLinkedRecords(linked);
+
+                    // --- NEW: Fetch pending requests sent by this doctor to this patient ---
+                    const pendingRequests = await consentReadContract.getPendingRequests(targetWallet);
+                    const sentByMe = pendingRequests.filter(r => r.provider.toLowerCase() === normalizedDoctor);
+                    setPendingSentRequests(sentByMe);
+                }
+
+                if (formatted.length === 0 && linkedRecords.length === 0 && pendingSentRequests.length === 0) {
+                    toast.warning("No records or pending requests found for this patient.");
+                } else {
+                    toast.success(`Synced dashboard for patient.`);
+                }
 
             } else {
                 toast.error("MedicalRecords contract not loaded");
@@ -141,29 +293,39 @@ const DoctorDashboard = ({ account, consentContract, auditLogContract, accessCon
         }
     };
 
-    const handleDecryptRecord = async () => {
-        if (!ipfsCid) {
+    const handleDecryptRecord = async (targetCid = null, patientMeta = null) => {
+        const cidToUse = targetCid || ipfsCid;
+        if (!cidToUse) {
             toast.error("Please provide a valid IPFS CID");
             return;
         }
 
         try {
             setIsDecrypting(true);
+            setDecryptedRecord(null); // Clear old view
             toast.info("Fetching encrypted payload from IPFS nodes...");
-            const cipherText = await fetchFromPinata(ipfsCid);
+            
+            const cipherText = await fetchFromPinata(cidToUse);
 
             toast.info("Decrypting ciphertext with local key...");
-            // Simulate slight delay for dramatic decryption effect
-            await new Promise(r => setTimeout(r, 800));
+            await new Promise(r => setTimeout(r, 600));
 
             const rawData = decryptData(cipherText);
-            setDecryptedRecord(rawData);
+            
+            // Enrich with patient metadata if provided
+            setDecryptedRecord({
+                ...rawData,
+                patientShortId: patientMeta?.shortId || "Unknown",
+                patientWallet: patientMeta?.wallet || "Unknown"
+            });
+            
             toast.success("Data successfully decrypted!");
 
             // Log decryption action to audit trail
-            if (auditLogContract && patientWallet) {
+            const targetPatient = patientMeta?.wallet || patientWallet;
+            if (auditLogContract && targetPatient && ethers.isAddress(targetPatient)) {
                 const nowSecs = Math.floor(Date.now() / 1000);
-                await auditLogContract.logDataAccessed(patientWallet, account, "IPFS Record Decryption", nowSecs, { gasLimit: 1000000 });
+                await auditLogContract.logDataAccessed(targetPatient, account, "IPFS Record Decryption", nowSecs, { gasLimit: 1000000 });
             }
         } catch (error) {
             toast.error(error.message || "Failed to decrypt record. Invalid CID or Key.");
@@ -241,29 +403,39 @@ const DoctorDashboard = ({ account, consentContract, auditLogContract, accessCon
     };
 
     return (
-        <div className="dashboard animate-fade-in" style={{ padding: '2rem' }}>
-            <div className="dashboard-header" style={{ marginBottom: '2rem' }}>
-                <h2>Physician Portal</h2>
-                <p style={{ color: 'var(--text-secondary)' }}>Secure clinical access governed by DPDP 2023.</p>
+        <div className="dashboard animate-fade-in">
+            <div className="dashboard-header" style={{ marginBottom: '2rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <div>
+                    <h2>Physician Portal</h2>
+                    <p style={{ color: 'var(--text-secondary)' }}>Secure clinical access governed by DPDP 2023.</p>
+                </div>
+                <button 
+                  className="secondary-btn" 
+                  onClick={syncAllHistory} 
+                  disabled={loading || interactionHistory.length === 0}
+                  style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}
+                >
+                  {loading ? "Syncing..." : "🔄 Sync All History"}
+                </button>
             </div>
 
-            <div className="dashboard-grid" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '2rem' }}>
-                <div className="glass-panel" style={{ padding: '2rem' }}>
-                    <h3 style={{ marginBottom: '1rem' }}>Request Patient Access</h3>
-                    <p style={{ fontSize: '0.9rem', color: 'var(--text-secondary)', marginBottom: '1rem' }}>
+            <div className="dashboard-grid">
+                <div className="glass-panel" style={{ padding: '2.5rem' }}>
+                    <h3>Request Patient Access</h3>
+                    <p style={{ fontSize: '0.9rem', color: 'var(--text-muted)', marginBottom: '1.5rem' }}>
                         Submit an on-chain request to view a patient's encrypted health records.
                     </p>
                     <div className="form-group">
-                        <label>Patient Wallet Address</label>
+                        <label>Patient ID (Wallet or Short ID)</label>
                         <input
                             type="text"
                             className="glass-input"
-                            placeholder="0x..."
+                            placeholder="e.g. 1234-ABCD or 0x..."
                             value={patientWallet}
                             onChange={(e) => setPatientWallet(e.target.value)}
                         />
                     </div>
-                    <div className="form-group" style={{ marginTop: '1rem' }}>
+                    <div className="form-group">
                         <label>Clinical Purpose</label>
                         <input
                             type="text"
@@ -273,31 +445,31 @@ const DoctorDashboard = ({ account, consentContract, auditLogContract, accessCon
                             onChange={(e) => setRequestPurpose(e.target.value)}
                         />
                     </div>
-                    <button className="primary-btn" onClick={checkPatientConsents} disabled={loading} style={{ marginTop: '1rem', width: '100%' }}>
+                    <button className="primary-btn" onClick={checkPatientConsents} disabled={loading} style={{ width: '100%' }}>
                         {loading ? "Submitting..." : "Send Access Request"}
                     </button>
                 </div>
 
-                <div className="glass-panel" style={{ padding: '2rem' }}>
-                    <h3 style={{ marginBottom: '1rem' }}>Clinical Guidelines</h3>
-                    <ul style={{ color: 'var(--text-secondary)', fontSize: '0.9rem', lineHeight: '1.6' }}>
-                        <li>✔ Ensure patient has granted active digital consent.</li>
-                        <li>✔ All data access is logged to the immutable audit trail.</li>
-                        <li>✔ Respect "Right to Erasure" requests from patients.</li>
+                <div className="glass-panel" style={{ padding: '2.5rem' }}>
+                    <h3>Clinical Guidelines</h3>
+                    <ul style={{ color: 'var(--text-muted)', fontSize: '0.95rem', lineHeight: '1.8', paddingLeft: '1.25rem' }}>
+                        <li>Verify patient's digital consent status before access.</li>
+                        <li>All clinical access is logged for compliance audit.</li>
+                        <li>Honor patients' "Right to Erasure" immediately.</li>
                     </ul>
                 </div>
             </div>
 
             {/* Prescription Upload Panel */}
-            <div className="dashboard-section glass-panel" style={{ marginTop: '2rem', padding: '2rem', borderLeft: '4px solid var(--medical-primary)' }}>
+            <div className="dashboard-section glass-panel" style={{ borderLeft: '6px solid var(--medical-primary)' }}>
                 <h3>Issue Prescription to Global Queue</h3>
-                <p style={{ fontSize: '0.9rem', color: 'var(--text-secondary)', marginBottom: '1.5rem' }}>
-                    Generate an encrypted IPFS prescription cipher and immutably map it to the patient's wallet into the global Pharmacy queue.
+                <p style={{ fontSize: '0.9rem', color: 'var(--text-muted)', marginBottom: '2rem' }}>
+                    Generate an encrypted IPFS prescription cipher and immutably map it to the patient's ID into the global Pharmacy queue.
                 </p>
                 <form onSubmit={handleUploadPrescription} style={{ display: 'grid', gridTemplateColumns: 'minmax(200px, 1fr) minmax(200px, 1fr)', gap: '1rem' }}>
                     <div className="form-group">
-                        <label>Patient Wallet Address</label>
-                        <input type="text" className="glass-input" placeholder="0x..." value={rxPatientWallet} onChange={(e) => setRxPatientWallet(e.target.value)} required />
+                        <label>Patient ID (Wallet or Short ID)</label>
+                        <input type="text" className="glass-input" placeholder="e.g. 1234-ABCD" value={rxPatientWallet} onChange={(e) => setRxPatientWallet(e.target.value)} required />
                     </div>
                     <div className="form-group">
                         <label>Patient Name (Alias)</label>
@@ -326,9 +498,9 @@ const DoctorDashboard = ({ account, consentContract, auditLogContract, accessCon
             </div>
 
             {/* IPFS Decryption Engine */}
-            <div className="dashboard-section glass-panel" style={{ marginTop: '2rem', padding: '2rem', borderLeft: '4px solid var(--medical-aqua)' }}>
+            <div className="dashboard-section glass-panel" style={{ borderLeft: '6px solid var(--medical-accent)' }}>
                 <h3>IPFS Decryption Engine</h3>
-                <p style={{ fontSize: '0.9rem', color: 'var(--text-secondary)', marginBottom: '1.5rem' }}>
+                <p style={{ fontSize: '0.9rem', color: 'var(--text-muted)', marginBottom: '2rem' }}>
                     Fetch an encrypted patient record from the decentralized IPFS network and decrypt it securely in your local browser environment.
                 </p>
                 <div style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
@@ -346,30 +518,35 @@ const DoctorDashboard = ({ account, consentContract, auditLogContract, accessCon
                 </div>
 
                 {decryptedRecord && (
-                    <div style={{ marginTop: '2rem', padding: '1.5rem', backgroundColor: 'var(--panel-bg)', borderRadius: '12px', border: '1px solid var(--glass-border)', boxShadow: 'var(--shadow-3d)' }}>
-                        <h4 style={{ color: 'var(--status-approved)', marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                    <div className="floating-card" style={{ marginTop: '2rem', borderColor: 'var(--medical-primary)' }}>
+                        <h4 style={{ color: 'var(--medical-primary)', marginBottom: '1.5rem', display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
                             <span>🔓</span> Decrypted Health Record
                         </h4>
-                        <div style={{ display: 'grid', gridTemplateColumns: '120px 1fr', gap: '1rem', color: 'var(--text-secondary)' }}>
-                            <strong>Patient Ref:</strong> <span>{decryptedRecord.patientRef}</span>
-                            <strong>Record Type:</strong> <span>{decryptedRecord.type}</span>
-                            <strong>Clinical Data:</strong> <span style={{ color: 'var(--text-color)', lineHeight: '1.5' }}>{decryptedRecord.clinicalData}</span>
+                        <div style={{ display: 'grid', gridTemplateColumns: '140px 1fr', gap: '1.5rem', fontSize: '0.95rem' }}>
+                            <strong style={{ color: 'var(--text-muted)' }}>Patient ID:</strong> <span style={{ color: 'var(--medical-primary)', fontWeight: 'bold' }}>{decryptedRecord.patientShortId}</span>
+                            <strong style={{ color: 'var(--text-muted)' }}>Record Type:</strong> <span>{decryptedRecord.type}</span>
+                            <strong style={{ color: 'var(--text-muted)' }}>Clinical Data:</strong> <span style={{ lineHeight: '1.6' }}>{decryptedRecord.clinicalData}</span>
                         </div>
                     </div>
                 )}
             </div>
 
-            <div className="dashboard-section glass-panel" style={{ marginTop: '2rem', padding: '2rem' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <h3>Accessible Health Records</h3>
+            <div className="dashboard-section glass-panel">
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
+                    <div>
+                        <h3>Authorized Health Records</h3>
+                        <p style={{ fontSize: '0.9rem', color: 'var(--text-muted)' }}>General medical history authorized for your view.</p>
+                    </div>
                     <button className="secondary-btn" onClick={fetchAuthorizedRecords} disabled={loading}>
-                        {loading ? "Fetching..." : "Fetch Approved Records"}
+                        {loading ? "..." : "Fetch Records"}
                     </button>
                 </div>
 
-                <table className="data-table" style={{ marginTop: '1.5rem' }}>
+                <div className="table-container">
+                    <table className="data-table">
                     <thead>
                         <tr>
+                            <th>Patient ID</th>
                             <th>Record Type</th>
                             <th>Status</th>
                             <th>IPFS Hash</th>
@@ -378,16 +555,18 @@ const DoctorDashboard = ({ account, consentContract, auditLogContract, accessCon
                     </thead>
                     <tbody>
                         {activeConsents.length === 0 ? (
-                            <tr><td colSpan="4" style={{ textAlign: 'center', padding: '3rem' }}>No fetched records. Ensure patient has granted access and click Fetch.</td></tr>
+                            <tr><td colSpan="4" style={{ textAlign: 'center', padding: '3rem' }}>No general records found.</td></tr>
                         ) : (
                             activeConsents.map(c => (
                                 <tr key={c.id}>
+                                    <td><strong style={{ color: 'var(--medical-primary)' }}>{c.shortId}</strong></td>
                                     <td>{c.type}</td>
                                     <td><span className="status-badge active">{c.status}</span></td>
                                     <td style={{ fontFamily: 'monospace', fontSize: '0.85em', color: 'var(--text-secondary)' }}>{c.cid.slice(0, 12)}...</td>
                                     <td>
                                         <button className="secondary-btn" onClick={() => {
                                             setIpfsCid(c.cid);
+                                            handleDecryptRecord(c.cid, { wallet: c.patient, shortId: c.shortId });
                                             window.scrollTo({ top: document.body.scrollHeight, behavior: 'smooth' });
                                         }}>
                                             Decrypt
@@ -399,6 +578,73 @@ const DoctorDashboard = ({ account, consentContract, auditLogContract, accessCon
                     </tbody>
                 </table>
             </div>
+          </div>
+
+            {linkedRecords.length > 0 || pendingSentRequests.length > 0 ? (
+                <div className="dashboard-section glass-panel" style={{ borderTop: '6px solid var(--medical-primary)' }}>
+                    <h3>Specifically Shared Data & Requests</h3>
+                    <p style={{ fontSize: '0.9rem', color: 'var(--text-muted)', marginBottom: '2rem' }}>
+                        Records explicitly selected by the patient or status of your pending requests.
+                    </p>
+                    <div className="table-container">
+                        <table className="data-table">
+                            <thead>
+                                <tr>
+                                    <th>Patient ID</th>
+                                    <th>Purpose</th>
+                                    <th>Status / CID</th>
+                                    <th>Shared / Requested At</th>
+                                    <th>Action</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {/* Show Pending Requests First */}
+                                {pendingSentRequests.map((r, idx) => (
+                                    <tr key={`req-${idx}`} style={{ opacity: 0.8 }}>
+                                        <td><strong style={{ color: 'var(--medical-primary)' }}>{r.shortId}</strong></td>
+                                        <td>{r.purpose}</td>
+                                        <td><span className="status-badge pending" style={{ padding: '0.3rem 0.6rem', fontSize: '0.75rem' }}>Consent Requested</span></td>
+                                        <td>
+                                            <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>
+                                                {r.patient.slice(0, 10)}...
+                                            </div>
+                                            {new Date(Number(r.timestamp) * 1000).toLocaleDateString()}
+                                        </td>
+                                        <td>
+                                            <button className="secondary-btn" disabled style={{ opacity: 0.5, cursor: 'not-allowed' }}>
+                                                Pending Approval
+                                            </button>
+                                        </td>
+                                    </tr>
+                                ))}
+                                {/* Show Linked Records */}
+                                {linkedRecords.map((r, idx) => (
+                                    <tr key={`link-${idx}`}>
+                                        <td><strong style={{ color: 'var(--medical-primary)' }}>{r.shortId}</strong></td>
+                                        <td>{r.purpose}</td>
+                                        <td style={{ fontFamily: 'monospace', fontSize: '0.85em', color: 'var(--text-secondary)' }}>{r.cid.slice(0, 16)}...</td>
+                                        <td>
+                                            <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>
+                                                {r.patient?.slice(0, 10)}...
+                                            </div>
+                                            {new Date(Number(r.sharedAt) * 1000).toLocaleDateString()}
+                                        </td>
+                                        <td>
+                                            <button className="primary-btn" onClick={() => {
+                                                setIpfsCid(r.cid);
+                                                handleDecryptRecord(r.cid, { wallet: r.patient, shortId: r.shortId });
+                                                window.scrollTo({ top: document.body.scrollHeight, behavior: 'smooth' });
+                                            }}>
+                                                🔓 Decrypt
+                                            </button>
+                                        </td>
+                                    </tr>
+                                ))}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            ) : null}
         </div>
     );
 };

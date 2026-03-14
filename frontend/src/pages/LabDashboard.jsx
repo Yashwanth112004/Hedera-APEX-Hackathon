@@ -145,9 +145,14 @@ const LabDashboard = ({ medicalRecordsContract, walletMapperContract }) => {
   const [recentReports, setRecentReports] = useState([]);
 
   return (
-    <div className="dashboard">
-      <div className="dashboard-header">
-        <h2>Lab Dashboard</h2>
+    <div className="dashboard animate-fade-in">
+      <div className="dashboard-header" style={{ marginBottom: '2.5rem' }}>
+        <div>
+          <h1 style={{ fontSize: '2.5rem', fontWeight: '800', color: 'var(--medical-primary)', marginBottom: '0.5rem', letterSpacing: '-0.02em' }}>
+            Diagnostic Laboratory Portal
+          </h1>
+          <p style={{ color: 'var(--text-muted)', fontSize: '1.1rem' }}>Secure diagnostic data management and blockchain-anchored reports.</p>
+        </div>
         <div className="dashboard-actions">
           <button
             className="primary-btn"
@@ -158,10 +163,10 @@ const LabDashboard = ({ medicalRecordsContract, walletMapperContract }) => {
         </div>
       </div>
 
-      <div className="dashboard-cards">
+      <div className="dashboard-grid">
         {dashboardCards.map((card, index) => (
-          <div key={index} className="dashboard-card" style={{ borderColor: card.color }}>
-            <div className="card-icon" style={{ backgroundColor: 'var(--panel-bg)', color: card.color, boxShadow: 'var(--shadow-3d)' }}>
+          <div key={index} className="dashboard-card floating-card" style={{ borderTop: `4px solid ${card.color}` }}>
+            <div className="card-icon" style={{ backgroundColor: `${card.color}10`, color: card.color }}>
               {card.icon}
             </div>
             <div className="card-content">
@@ -172,7 +177,7 @@ const LabDashboard = ({ medicalRecordsContract, walletMapperContract }) => {
         ))}
       </div>
 
-      <div className="dashboard-section">
+      <div className="dashboard-section glass-panel">
         <h3>Recent Lab Reports</h3>
         <div className="table-container">
           <table className="data-table">
@@ -189,24 +194,22 @@ const LabDashboard = ({ medicalRecordsContract, walletMapperContract }) => {
             <tbody>
               {recentReports.length === 0 ? (
                 <tr>
-                  <td colSpan="6" style={{ textAlign: 'center', padding: '2rem' }}>No recent lab reports found.</td>
+                  <td colSpan="6" style={{ textAlign: 'center', padding: '3rem', color: 'var(--text-muted)' }}>No recent lab reports found.</td>
                 </tr>
               ) : (
                 recentReports.map((report) => (
                   <tr key={report.id}>
-                    <td><span title={report.cid} style={{ cursor: 'pointer', borderBottom: '1px dotted' }}>CID: {report.cid.slice(0, 8)}...</span></td>
-                    <td>{report.patient.slice(0, 6)}...{report.patient.slice(-4)}</td>
+                    <td><code title={report.cid} style={{ cursor: 'pointer', color: 'var(--medical-primary)' }}>{report.cid.slice(0, 12)}...</code></td>
+                    <td>{report.patient.slice(0, 8)}...</td>
                     <td>{report.type}</td>
                     <td>{report.date}</td>
                     <td>
-                      <span className={`status-badge ${report.status === 'Completed' ? 'active' : 'pending'}`}>
+                      <span className={`status-badge active`}>
                         {report.status}
                       </span>
                     </td>
                     <td>
-                      <div className="action-buttons">
-                        <button className="view-btn">Encrypted</button>
-                      </div>
+                      <button className="secondary-btn" style={{ padding: '0.4rem 0.8rem', fontSize: '0.8rem' }}>View</button>
                     </td>
                   </tr>
                 ))

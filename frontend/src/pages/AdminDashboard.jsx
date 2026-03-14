@@ -121,24 +121,29 @@ export default function AdminDashboard() {
 
   return (
     <div className="dashboard animate-fade-in">
-      <div className="dashboard-header">
-        <h2>Organization Role Mapping & Access Control</h2>
+      <div className="dashboard-header" style={{ marginBottom: '2.5rem' }}>
+        <div>
+          <h1 style={{ fontSize: '2.5rem', fontWeight: '800', color: 'var(--medical-primary)', marginBottom: '0.5rem', letterSpacing: '-0.02em' }}>
+            System Governance Portal
+          </h1>
+          <p style={{ color: 'var(--text-muted)', fontSize: '1.1rem' }}>Map organizational identities to blockchain roles for granular access control.</p>
+        </div>
         <div className="dashboard-actions">
-          <button className="secondary-btn" onClick={loadData}>Refresh Data</button>
+          <button className="secondary-btn" onClick={loadData}>Sync Ledger State</button>
         </div>
       </div>
 
       <div className="dashboard-section glass-panel">
         <h3>Pending Organization Requests</h3>
-        <p style={{ color: "var(--text-secondary)", marginBottom: "1rem" }}>
-          Organizations requesting system roles. Approve them to map their wallet address using the Role smart contract.
+        <p style={{ color: "var(--text-muted)", marginBottom: "1.5rem", fontSize: "0.95rem" }}>
+          Organizations requesting functional roles. Verification ensures DPDP 2023 compliance before blockchain-anchored approval.
         </p>
         <div className="table-container">
           <table className="data-table">
             <thead>
               <tr>
                 <th>Organization Name</th>
-                <th>Wallet Address</th>
+                <th>Identity (Wallet)</th>
                 <th>Requested Role</th>
                 <th>Action</th>
               </tr>
@@ -146,16 +151,16 @@ export default function AdminDashboard() {
             <tbody>
               {pendingRequests.length === 0 ? (
                 <tr>
-                  <td colSpan="4" style={{ textAlign: 'center', padding: '2rem' }}>No pending requests</td>
+                  <td colSpan="4" style={{ textAlign: 'center', padding: '3rem', color: 'var(--text-muted)' }}>No pending organizational requests.</td>
                 </tr>
               ) : (
                 pendingRequests.map((req, index) => (
                   <tr key={index}>
-                    <td>{req.orgName}</td>
-                    <td><span title={req.wallet}>{req.wallet.slice(0, 6)}...{req.wallet.slice(-4)}</span></td>
-                    <td>{getRoleName(req.roleId)}</td>
+                    <td><strong>{req.orgName}</strong></td>
+                    <td><code title={req.wallet}>{req.wallet.slice(0, 10)}...{req.wallet.slice(-6)}</code></td>
+                    <td><span className="role-badge" style={{ background: 'var(--grad-blue)', fontSize: '0.75rem' }}>{getRoleName(req.roleId)}</span></td>
                     <td>
-                      <button className="primary-btn" onClick={() => approveRequest(req)}>
+                      <button className="primary-btn" onClick={() => approveRequest(req)} style={{ padding: '0.4rem 0.8rem', fontSize: '0.8rem' }}>
                         Approve & Map
                       </button>
                     </td>
@@ -167,10 +172,10 @@ export default function AdminDashboard() {
         </div>
       </div>
 
-      <div className="dashboard-section glass-panel" style={{ marginTop: '2rem' }}>
+      <div className="dashboard-section glass-panel" style={{ borderTop: '6px solid var(--medical-primary)' }}>
         <h3>Active Blockchain Mappings</h3>
-        <p style={{ color: "var(--text-secondary)", marginBottom: "1rem" }}>
-          Wallets actively mapped to functional roles on the ledger. Revoking permission reduces their role back to 0.
+        <p style={{ color: "var(--text-muted)", marginBottom: "1.5rem", fontSize: "0.95rem" }}>
+          Immutable ledger mappings of wallets to organizational roles. Revocation immediately terminates clinical data access.
         </p>
         <div className="table-container">
           <table className="data-table">
@@ -179,31 +184,31 @@ export default function AdminDashboard() {
                 <th>Wallet Address</th>
                 <th>Mapped Role</th>
                 <th>Status</th>
-                <th>Action (Revoke)</th>
+                <th>Action</th>
               </tr>
             </thead>
             <tbody>
               {activeRoles.length === 0 ? (
                 <tr>
-                  <td colSpan="4" style={{ textAlign: 'center', padding: '2rem' }}>No active mapped roles found</td>
+                  <td colSpan="4" style={{ textAlign: 'center', padding: '3rem', color: 'var(--text-muted)' }}>No active ledger mappings detected.</td>
                 </tr>
               ) : (
                 activeRoles.map((roleInfo, index) => (
                   <tr key={index}>
-                    <td style={{ fontFamily: 'monospace' }}>{roleInfo.wallet}</td>
-                    <td>{getRoleName(roleInfo.roleId)}</td>
+                    <td><code style={{ fontSize: '0.85rem' }}>{roleInfo.wallet}</code></td>
+                    <td><span className="role-badge" style={{ background: 'var(--grad-teal)', fontSize: '0.75rem' }}>{getRoleName(roleInfo.roleId)}</span></td>
                     <td>
-                      <span className="status-badge active" style={{ backgroundColor: 'var(--status-approved)', filter: 'brightness(0.9)', color: '#fff' }}>
-                        Active User
+                      <span className="status-badge active">
+                        Verified Identity
                       </span>
                     </td>
                     <td>
                       <button
                         className="secondary-btn"
-                        style={{ color: 'var(--status-rejected)', borderColor: 'var(--status-rejected)' }}
+                        style={{ color: 'var(--status-rejected)', borderColor: 'var(--status-rejected)', padding: '0.4rem 0.8rem', fontSize: '0.8rem' }}
                         onClick={() => revokeRole(roleInfo.wallet)}
                       >
-                        Revoke Logic Access
+                        Revoke Token
                       </button>
                     </td>
                   </tr>
