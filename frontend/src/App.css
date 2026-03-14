@@ -1005,10 +1005,39 @@
   position: relative;
 }
 
+.dashboard-section {
+  background: var(--sas-surface);
+  border: 1px solid var(--sas-border);
+  border-radius: 32px;
+  padding: 3rem;
+  box-shadow: 0 20px 60px rgba(0,0,0,0.03);
+  margin-top: 2rem;
+  margin-bottom: 2rem;
+  position: relative;
+  overflow: hidden;
+}
+
 [data-theme='dark'] .dashboard-section {
   background: rgba(15, 23, 42, 0.4);
   border-color: rgba(255, 255, 255, 0.05);
   box-shadow: 0 20px 60px rgba(0,0,0,0.25);
+}
+
+.surface-card, .glass-panel {
+  background: rgba(255, 255, 255, 0.4);
+  backdrop-filter: blur(20px) saturate(160%);
+  -webkit-backdrop-filter: blur(20px) saturate(160%);
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  border-radius: 24px;
+  padding: 2.5rem;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.05);
+  margin-bottom: 2rem;
+}
+
+[data-theme='dark'] .surface-card, 
+[data-theme='dark'] .glass-panel {
+  background: rgba(15, 23, 42, 0.45);
+  border-color: rgba(255, 255, 255, 0.08);
 }
 
 .dashboard-section h3 {
@@ -1063,27 +1092,47 @@
    Status Badges
 ════════════════════════════════════════════ */
 .status-badge {
-  padding: 0.35rem 0.8rem;
-  border-radius: 20px;
-  font-size: 0.72rem;
-  font-weight: 700;
-  letter-spacing: 0.6px;
+  padding: 0.4rem 1rem;
+  border-radius: 12px;
+  font-size: 0.75rem;
+  font-weight: 850;
+  letter-spacing: 0.8px;
   text-transform: uppercase;
-  display: inline-block;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
   border: 1px solid transparent;
 }
 
-.status-badge.active {
-  background: var(--success-light);
-  color: var(--success-color);
-  border-color: #6ee7b7;
+.status-badge.active, .status-badge.approved {
+  background: rgba(16, 185, 129, 0.1);
+  color: #10b981;
+  border-color: rgba(16, 185, 129, 0.2);
 }
 
-.status-badge.revoked,
-.status-badge.inactive {
-  background: var(--danger-light);
-  color: var(--danger-color);
-  border-color: #fca5a5;
+.status-badge.pending {
+  background: rgba(245, 158, 11, 0.1);
+  color: #f59e0b;
+  border-color: rgba(245, 158, 11, 0.2);
+}
+
+.status-badge.revoked, .status-badge.rejected, .status-badge.inactive {
+  background: rgba(239, 68, 68, 0.1);
+  color: #ef4444;
+  border-color: rgba(239, 68, 68, 0.2);
+}
+
+.error-banner {
+  background: rgba(239, 68, 68, 0.08);
+  border: 1px solid rgba(239, 68, 68, 0.2);
+  color: #ef4444;
+  padding: 1.25rem 2rem;
+  border-radius: 16px;
+  margin-bottom: 2rem;
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  font-weight: 600;
 }
 
 /* ════════════════════════════════════════════

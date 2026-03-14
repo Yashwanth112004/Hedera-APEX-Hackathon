@@ -14,11 +14,14 @@ const roleABI = [
 ];
 
 export default function AdminDashboard() {
-
   const [pendingRequests, setPendingRequests] = useState([]);
   const [activeRoles, setActiveRoles] = useState([]);
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState(null);
 
   const loadData = async () => {
+    setIsLoading(true);
+    setError(null);
     try {
       const provider = new ethers.BrowserProvider(window.ethereum);
       const contract = new ethers.Contract(RBAC_ADDRESS, roleABI, provider);
@@ -26,8 +29,7 @@ export default function AdminDashboard() {
       const localReqs = JSON.parse(localStorage.getItem('dpdp_role_requests') || '[]');
       setPendingRequests(localReqs.filter(r => r.status === 'pending'));
 
-      // Check on-chain mapped status for all known wallets instead of querying massive event logs
-      // This is much safer for public testnets with rate limits like Hedera
+      // Check on-chain mapped status for all known wallets
       const uniqueWallets = [...new Set(localReqs.map(r => r.wallet))];
       const active = [];
 
@@ -39,34 +41,34 @@ export default function AdminDashboard() {
             active.push({ wallet: safeWallet, roleId: Number(roleId) });
           }
         } catch (e) {
-          console.warn("Could not fetch role, invalid address format:", rawWallet);
+          console.warn("Invalid wallet address or RPC error for:", rawWallet);
         }
       }
-
       setActiveRoles(active);
-
     } catch (err) {
       console.error("Error loading admin data", err);
-      const localReqs = JSON.parse(localStorage.getItem('dpdp_role_requests') || '[]');
-      setPendingRequests(localReqs.filter(r => r.status === 'pending'));
+      setError("Failed to fetch blockchain data. Please ensure your wallet is connected to the correct network.");
+    } finally {
+      setIsLoading(false);
     }
   };
 
   const getRoleName = (id) => {
     switch (Number(id)) {
       case 1: return "Hospital";
-      case 2: return "Diagnostic Lab";
+      case 2: return "Lab";
       case 3: return "Doctor";
       case 4: return "Pharmacy";
       case 5: return "Insurance";
-      case 6: return "Regulator/Auditor";
+      case 6: return "Auditor";
       case 7: return "Admin";
-      default: return "Patient (0)";
+      default: return "Patient";
     }
   };
 
   const approveRequest = async (req) => {
     try {
+      setIsLoading(true);
       const provider = new ethers.BrowserProvider(window.ethereum);
       const signer = await provider.getSigner();
       const contract = new ethers.Contract(RBAC_ADDRESS, roleABI, signer);
@@ -77,7 +79,7 @@ export default function AdminDashboard() {
         return;
       }
 
-      toast.info(`Mapping ${req.orgName} to role ${getRoleName(req.roleId)}...`);
+      toast.info(`On-chaining ${req.orgName} as ${getRoleName(req.roleId)}...`);
 
       const tx = await contract.registerRole(safeWallet, Number(req.roleId), { gasLimit: 1000000 });
       await tx.wait();
@@ -90,16 +92,19 @@ export default function AdminDashboard() {
       );
       localStorage.setItem('dpdp_role_requests', JSON.stringify(updatedReqs));
 
-      toast.success("Role successfully mapped on record");
+      toast.success("Identity role successfully mapped on blockchain");
       loadData();
     } catch (err) {
       console.error(err);
-      toast.error("Mapping failed: " + (err.reason || err.message));
+      toast.error("Transaction failed: " + (err.reason || err.message));
+    } finally {
+      setIsLoading(false);
     }
   };
 
   const revokeRole = async (wallet) => {
     try {
+      setIsLoading(true);
       const provider = new ethers.BrowserProvider(window.ethereum);
       const signer = await provider.getSigner();
       const contract = new ethers.Contract(RBAC_ADDRESS, roleABI, signer);
@@ -107,11 +112,13 @@ export default function AdminDashboard() {
       const tx = await contract.updateRole(wallet, 0, { gasLimit: 1000000 });
       await tx.wait();
 
-      toast.success("Identity permissions revoked");
+      toast.success("Identity permissions revoked from ledger");
       loadData();
     } catch (err) {
       console.error(err);
-      toast.error("Revoke failed");
+      toast.error("Revoke failed: " + (err.reason || err.message));
+    } finally {
+      setIsLoading(false);
     }
   };
 
@@ -122,41 +129,60 @@ export default function AdminDashboard() {
   return (
     <div className="dashboard animate-fade-in">
       <div className="dashboard-header">
-        <h2>Organization Role Mapping & Access Control</h2>
+        <div>
+          <h2>Governance & Access Control</h2>
+          <p style={{ color: "var(--sas-text-dim)", fontSize: "0.95rem", marginTop: "0.4rem" }}>
+            Manage DPDP Compliance roles and on-chain organization identity.
+          </p>
+        </div>
         <div className="dashboard-actions">
-          <button className="secondary-btn" onClick={loadData}>Refresh Data</button>
+          <button className="secondary-sas-btn" onClick={loadData} disabled={isLoading}>
+            {isLoading ? "Refreshing..." : "Refresh Ledger Status"}
+          </button>
         </div>
       </div>
 
+      {error && (
+        <div className="error-banner">
+          <span>⚠️</span> {error}
+        </div>
+      )}
+
       <div className="dashboard-section glass-panel">
-        <h3>Pending Organization Requests</h3>
-        <p style={{ color: "var(--text-secondary)", marginBottom: "1rem" }}>
-          Organizations requesting system roles. Approve them to map their wallet address using the Role smart contract.
-        </p>
+        <div className="section-header-row" style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '2rem' }}>
+          <h3>Organization Requests</h3>
+          <span className="status-badge pending">{pendingRequests.length} Pending</span>
+        </div>
+        
         <div className="table-container">
           <table className="data-table">
             <thead>
               <tr>
-                <th>Organization Name</th>
+                <th>Organization</th>
                 <th>Wallet Address</th>
                 <th>Requested Role</th>
-                <th>Action</th>
+                <th style={{ textAlign: 'right' }}>Action</th>
               </tr>
             </thead>
             <tbody>
               {pendingRequests.length === 0 ? (
                 <tr>
-                  <td colSpan="4" style={{ textAlign: 'center', padding: '2rem' }}>No pending requests</td>
+                  <td colSpan="4" style={{ textAlign: 'center', padding: '3rem', color: 'var(--sas-text-dim)' }}>
+                    No pending organization requests found.
+                  </td>
                 </tr>
               ) : (
                 pendingRequests.map((req, index) => (
                   <tr key={index}>
-                    <td>{req.orgName}</td>
-                    <td><span title={req.wallet}>{req.wallet.slice(0, 6)}...{req.wallet.slice(-4)}</span></td>
-                    <td>{getRoleName(req.roleId)}</td>
                     <td>
-                      <button className="primary-btn" onClick={() => approveRequest(req)}>
-                        Approve & Map
+                      <div style={{ fontWeight: 800 }}>{req.orgName}</div>
+                      <div style={{ fontSize: '0.75rem', opacity: 0.6 }}>Mapped via LocalStorage</div>
+                    </td>
+                    <td><code style={{ fontSize: '0.9rem', color: 'var(--sas-primary)' }}>{req.wallet.slice(0, 10)}...{req.wallet.slice(-8)}</code></td>
+                    <td><span className="status-badge approved" style={{ background: 'rgba(59, 130, 246, 0.1)', color: 'var(--sas-primary)', borderColor: 'rgba(59, 130, 246, 0.2)' }}>{getRoleName(req.roleId)}</span></td>
+                    <td style={{ textAlign: 'right' }}>
+                      <button className="primary-sas-btn" style={{ padding: '0.6rem 1.2rem', fontSize: '0.85rem' }} onClick={() => approveRequest(req)} disabled={isLoading}>
+                        Authorize & Map
                       </button>
                     </td>
                   </tr>
@@ -168,42 +194,46 @@ export default function AdminDashboard() {
       </div>
 
       <div className="dashboard-section glass-panel" style={{ marginTop: '2rem' }}>
-        <h3>Active Blockchain Mappings</h3>
-        <p style={{ color: "var(--text-secondary)", marginBottom: "1rem" }}>
-          Wallets actively mapped to functional roles on the ledger. Revoking permission reduces their role back to 0.
-        </p>
+        <div className="section-header-row" style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '2rem' }}>
+          <h3>Active Ledger Mappings</h3>
+          <span className="status-badge active">{activeRoles.length} Verified</span>
+        </div>
+        
         <div className="table-container">
           <table className="data-table">
             <thead>
               <tr>
-                <th>Wallet Address</th>
-                <th>Mapped Role</th>
-                <th>Status</th>
-                <th>Action (Revoke)</th>
+                <th>Verified Wallet</th>
+                <th>Functional Role</th>
+                <th>Identity Status</th>
+                <th style={{ textAlign: 'right' }}>Action</th>
               </tr>
             </thead>
             <tbody>
               {activeRoles.length === 0 ? (
                 <tr>
-                  <td colSpan="4" style={{ textAlign: 'center', padding: '2rem' }}>No active mapped roles found</td>
+                  <td colSpan="4" style={{ textAlign: 'center', padding: '3rem', color: 'var(--sas-text-dim)' }}>
+                    No active on-chain mappings detected.
+                  </td>
                 </tr>
               ) : (
                 activeRoles.map((roleInfo, index) => (
                   <tr key={index}>
-                    <td style={{ fontFamily: 'monospace' }}>{roleInfo.wallet}</td>
-                    <td>{getRoleName(roleInfo.roleId)}</td>
+                    <td style={{ fontFamily: 'monospace', fontWeight: 600 }}>{roleInfo.wallet}</td>
+                    <td><span className="status-badge approved">{getRoleName(roleInfo.roleId)}</span></td>
                     <td>
-                      <span className="status-badge active" style={{ backgroundColor: 'var(--success-color)', filter: 'brightness(0.8)' }}>
-                        Active User
-                      </span>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: '#10b981', fontWeight: 800, fontSize: '0.85rem' }}>
+                        <div className="status-dot"></div> Verified
+                      </div>
                     </td>
-                    <td>
+                    <td style={{ textAlign: 'right' }}>
                       <button
-                        className="secondary-btn"
-                        style={{ color: 'var(--danger-color)', borderColor: 'var(--danger-color)' }}
+                        className="secondary-sas-btn"
+                        style={{ color: '#ef4444', borderColor: 'rgba(239, 68, 68, 0.2)', padding: '0.6rem 1.2rem', fontSize: '0.85rem' }}
                         onClick={() => revokeRole(roleInfo.wallet)}
+                        disabled={isLoading}
                       >
-                        Revoke Logic Access
+                        Revoke Access
                       </button>
                     </td>
                   </tr>
@@ -214,5 +244,5 @@ export default function AdminDashboard() {
         </div>
       </div>
     </div>
-  )
-}
+  );
+}
