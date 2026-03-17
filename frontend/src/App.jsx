@@ -3,40 +3,47 @@ import { ethers } from "ethers";
 import { toast, ToastContainer } from "react-toastify";
 import "react-toastify/dist/ReactToastify.css";
 import "./App.css";
-import { WALLET_MAPPER_ADDRESS, WALLET_MAPPER_ABI } from "./utils/idMappingHelper";
+import { WALLET_MAPPER_ADDRESS, WALLET_MAPPER_ABI, resolveWalletAddress } from "./utils/idMappingHelper";
+import { getSafePatientConsents } from "./utils/consentHelper";
 
 import Navbar from "./components/Navbar";
 import Sidebar from "./components/Sidebar";
 import MedicalBackground from "./components/MedicalBackground";
 
 import PatientDashboard from "./pages/PatientDashboard";
+import DoctorDashboard from "./pages/DoctorDashboard";
 import HospitalDashboard from "./pages/HospitalDashboard";
 import LabDashboard from "./pages/LabDashboard";
 import RegulatorDashboard from "./pages/RegulatorDashboard";
 import AdminDashboard from "./pages/AdminDashboard";
 import AuditLogs from "./pages/AuditLogs";
-import DoctorDashboard from "./pages/DoctorDashboard";
 import PharmacyDashboard from "./pages/PharmacyDashboard";
 import InsuranceDashboard from "./pages/InsuranceDashboard";
+import LegalCompliance from "./pages/LegalCompliance";
 
 /* CONTRACT ADDRESSES */
-const AUDIT_LOG = "0x9655adB44dfe57AF56a2fa26Dff7dB7C57280D10";
-const REGISTRY = "0xB09cA1D4473E22cA07d69Edd2743F43E654066b5";
-const CONSENT_MANAGER = "0xa10BB9FFd47F7E7a1C9c9725DB2fbCfC9f272687";
-const ACCESS_MANAGER = "0x3bb8CE552aDd0e25609496CdD3CF20525950cB7f";
-const MEDICAL_RECORDS = "0x8627E5f5a4b01688f7eA2DB6Ce8E5B24de1ADe51";
-const RBAC_CONTRACT_ADDRESS = "0xc285Cba71f206fd6AB83514D82Dd389Fe0584919";
+const AUDIT_LOG = "0x92d2eCE8bB295b7806A900Fad7CA26Fd55814976";
+const REGISTRY = "0x155Af6ECaFb48861dA7d16Fb8Af2f6ce9d6DD779";
+const CONSENT_MANAGER = "0x931a878562F3c7f3D6B9Ff27f0ce01e1Cb0F4470";
+const ACCESS_MANAGER = "0x62BC569E5047E6f77C3ECA6C056C9337E39bd1BD";
+const MEDICAL_RECORDS = "0xCefd7626F25DE944C314F7E4047a44DD54c31581";
+const RBAC_CONTRACT_ADDRESS = "0x0b11e9AA48bf573A8E9d1D5085b71d8c58de9968";
 
 /* ABIs */
 const consentABI = [
-  "function grantConsent(address,string,string,uint256)",
+  "function grantConsent(address,string,string,string,uint256)",
   "function revokeConsent(uint256)",
+  "function updateConsentDuration(uint256,uint256)",
   "function requestErasure(uint256)",
-  "function getPatientConsents(address) view returns (tuple(address dataPrincipal,address dataFiduciary,string purpose,string dataHash,uint256 grantedAt,uint256 expiry,bool isActive,bool erased)[])",
+  "function getPatientConsents(address) view returns (tuple(address dataPrincipal,address dataFiduciary,string purpose,string dataHash,string dataScope,uint256 grantedAt,uint256 expiry,bool isActive,bool erased)[])",
   "function requestAccess(address,string)",
   "function getPendingRequests(address) view returns (tuple(uint256 id,address provider,string purpose,uint256 timestamp,bool isPending)[])",
-  "function approveRequest(uint256,string,uint256)",
+  "function approveRequest(uint256,string,string,uint256)",
   "function rejectRequest(uint256)"
+];
+
+const consentABIOld = [
+  "function getPatientConsents(address) view returns (tuple(address dataPrincipal,address dataFiduciary,string purpose,string dataHash,uint256 grantedAt,uint256 expiry,bool isActive,bool erased)[])"
 ];
 
 const medicalRecordsABI = [
@@ -54,7 +61,7 @@ const registryABI = [
 ];
 
 const accessABI = [
-  "function accessData(address,uint256,string)"
+  "function accessData(address,uint256,string,string)"
 ];
 
 const roleABI = [
@@ -68,8 +75,11 @@ const auditLogABI = [
   "function logConsentGranted(address,address,string,uint256)",
   "function logConsentRevoked(address,address)",
   "function logDataAccessed(address,address,string,uint256)",
+  "function logAccessRequested(address,address,string,uint256)",
   "function logErasureRequested(address,uint256)",
-  "function getLogs() view returns (tuple(address dataPrincipal, address dataFiduciary, string action, string purpose, uint256 timestamp)[])"
+  "function getLogs() view returns (tuple(address dataPrincipal, address dataFiduciary, string action, string purpose, uint256 timestamp)[])",
+  "event DataAccessed(address indexed dataPrincipal, address indexed fiduciary, string purpose, uint256 timestamp)",
+  "event AccessRequested(address indexed dataPrincipal, address indexed fiduciary, string purpose, uint256 timestamp)"
 ];
 
 // Map role IDs to strings based on DPDP requirements
@@ -90,14 +100,14 @@ function App() {
   const [account, setAccount] = useState("");
   const [role, setRole] = useState(null);
   const [activeTab, setActiveTab] = useState("dashboard");
-  const [showRoleForm, setShowRoleForm] = useState(false);
   const [authenticated, setAuthenticated] = useState(false);
   const [showContextSelection, setShowContextSelection] = useState(false);
   const [availableRoles, setAvailableRoles] = useState(["Patient"]);
 
-  const [reqOrgName, setReqOrgName] = useState("");
-  const [reqWallet, setReqWallet] = useState("");
-  const [reqRole, setReqRole] = useState("1");
+  // Beneficiary Access State
+  const [actingAsAccount, setActingAsAccount] = useState("");
+  const [showBeneficiaryLogin, setShowBeneficiaryLogin] = useState(false);
+  const [beneficiaryLoginData, setBeneficiaryLoginData] = useState({ mainAccount: '', password: '' });
 
   const [consentContract, setConsent] = useState(null);
   const [registryContract, setRegistry] = useState(null);
@@ -107,6 +117,7 @@ function App() {
   const [walletMapperContract, setWalletMapper] = useState(null);
 
   const [consents, setConsents] = useState([]);
+  const [notifications, setNotifications] = useState([]);
 
   const connectWallet = async () => {
     if (!window.ethereum) {
@@ -150,7 +161,18 @@ function App() {
         try { safeWallet = ethers.getAddress(wallet); } catch (e) { }
 
         // 1. Check mapped role (using provider avoids gas estimation errors on view calls)
-        const roleId = await roleContract.getRole(safeWallet);
+        let roleId = await roleContract.getRole(safeWallet);
+
+        // FALLBACK: If not found on primary, check secondary RBAC (legacy/parallel)
+        if (Number(roleId) === 0) {
+          try {
+            const legacyRBAC = "0xc285Cba71f206fd6AB83514D82Dd389Fe0584919";
+            const legacyContract = new ethers.Contract(legacyRBAC, roleABI, provider);
+            const legacyRoleId = await legacyContract.getRole(safeWallet);
+            if (Number(legacyRoleId) !== 0) roleId = legacyRoleId;
+          } catch (e) { }
+        }
+
         const stringRole = mapRole(roleId);
 
         if (stringRole !== "Patient") {
@@ -162,6 +184,14 @@ function App() {
           const isSystemAdmin = await roleContract.isAdmin(safeWallet);
           if (isSystemAdmin && !rolesToSelect.includes("Admin")) {
             rolesToSelect.push("Admin");
+          } else if (!isSystemAdmin) {
+            // Check legacy admin status
+            const legacyRBAC = "0xc285Cba71f206fd6AB83514D82Dd389Fe0584919";
+            const legacyContract = new ethers.Contract(legacyRBAC, roleABI, provider);
+            const isLegacyAdmin = await legacyContract.isAdmin(safeWallet);
+            if (isLegacyAdmin && !rolesToSelect.includes("Admin")) {
+              rolesToSelect.push("Admin");
+            }
           }
         } catch (e) { }
 
@@ -217,27 +247,42 @@ function App() {
     setRole(null);
     setAuthenticated(false);
     setShowContextSelection(false);
+    setActingAsAccount("");
     setActiveTab("dashboard");
+  };
+
+  const handleBeneficiaryLogin = (e) => {
+    e.preventDefault();
+    const lookup = JSON.parse(localStorage.getItem('beneficiary_lookup') || '{}');
+    const entry = lookup[account.toLowerCase()];
+
+    if (entry && entry.mainAccount.toLowerCase() === beneficiaryLoginData.mainAccount.toLowerCase() && entry.password === beneficiaryLoginData.password) {
+      setActingAsAccount(beneficiaryLoginData.mainAccount);
+      setRole("patient");
+      setShowBeneficiaryLogin(false);
+      toast.success(`Access granted for account: ${beneficiaryLoginData.mainAccount}`);
+    } else {
+      toast.error("Invalid credentials or you are not a registered beneficiary for this account.");
+    }
   };
 
   const handleTabChange = (tab) => setActiveTab(tab);
 
-  const submitRoleRequest = (e) => {
-    e.preventDefault();
-    const newRequest = { orgName: reqOrgName, wallet: reqWallet, roleId: reqRole, status: 'pending', timestamp: Date.now() };
-    const existingReqs = JSON.parse(localStorage.getItem('dpdp_role_requests') || '[]');
-    existingReqs.push(newRequest);
-    localStorage.setItem('dpdp_role_requests', JSON.stringify(existingReqs));
-    toast.success("Request submitted to Admin");
-    setShowRoleForm(false);
-    setReqOrgName("");
-    setReqWallet("");
+  const handleSwitchRole = () => {
+    if (availableRoles.length > 1) {
+      setShowContextSelection(true);
+      setRole(null);
+      setActiveTab("dashboard");
+    } else {
+      toast.info("No other roles available for this wallet.");
+    }
   };
 
-  const grantConsent = async (hospitalAddress, purpose) => {
+
+  const grantConsent = async (hospitalAddress, purpose, scope, duration) => {
     if (!consentContract) return;
     try {
-      const tx = await consentContract.grantConsent(hospitalAddress, purpose, "QmMedicalReportHash", 86400, { gasLimit: 1000000 });
+      const tx = await consentContract.grantConsent(hospitalAddress, purpose, "QmMedicalReportHash", scope || "All", duration || 86400, { gasLimit: 1000000 });
       await tx.wait();
       loadConsents();
       toast.success("Consent Granted on Blockchain");
@@ -269,14 +314,21 @@ function App() {
   };
 
   const loadConsents = async () => {
-    if (!consentContract || !account) return;
+    const target = actingAsAccount || account;
+    if (!consentContract || !target) return;
     try {
+      // Normalize to hex to avoid ENS resolution attempts on non-ENS networks (Hedera)
+      let safeAccount = target;
+      try { safeAccount = ethers.getAddress(target); } catch (e) { console.warn("Invalid account format for ENS safety check", e); }
+
       const provider = new ethers.BrowserProvider(window.ethereum);
       const readContract = consentContract.connect(provider);
-      const res = await readContract.getPatientConsents(account);
+
+      const res = await getSafePatientConsents(readContract, safeAccount, CONSENT_MANAGER, provider);
       setConsents(res);
     } catch (err) {
-      console.error(err);
+      console.error("Consent Load Failure:", err);
+      toast.error("Failed to load consents: " + (err.reason || err.message));
     }
   };
 
@@ -287,18 +339,99 @@ function App() {
       await tx.wait();
       toast.success("Registration Submitted");
     } catch (err) {
-      toast.error("Registration failed");
+      toast.error("Registration failed: " + (err.reason || err.message));
     }
   };
 
-  const accessPatientData = async (patient) => {
-    if (!accessContract) return;
+  const performEmergencyAccess = async (patientAddress, justification, attendingName) => {
+    if (!auditLogContract || !account) return;
     try {
-      const tx = await accessContract.accessData(patient, 0, "Clinical Purpose");
+      const safePatient = await resolveWalletAddress(patientAddress, walletMapperContract);
+      const nowSecs = Math.floor(Date.now() / 1000);
+
+      toast.info("🚨 INITIATING EMERGENCY BREAK-GLASS ACCESS...");
+
+      // Log emergency event on-chain
+      const tx = await auditLogContract.logDataAccessed(
+        safePatient,
+        account,
+        `EMERGENCY_ACCESS [By: ${attendingName || "Standard Admin"}]: ${justification}`,
+        nowSecs,
+        { gasLimit: 1000000 }
+      );
+      await tx.wait();
+
+      toast.success("Emergency Access Logged. You may now attempt to fetch data.");
+      return true;
+    } catch (err) {
+      console.error("Emergency Access Failed:", err);
+      toast.error("Emergency log failed: " + (err.reason || err.message));
+      return false;
+    }
+  };
+
+  const monitorAccessSpam = async (patientWallet) => {
+    if (!consentContract || !patientWallet) return [];
+    try {
+      const provider = new ethers.BrowserProvider(window.ethereum);
+      const readContract = consentContract.connect(provider);
+      const requests = await readContract.getPendingRequests(patientWallet);
+
+      // Analysis: Flag providers with more than 3 pending requests
+      const counts = {};
+      requests.forEach(r => {
+        counts[r.provider] = (counts[r.provider] || 0) + 1;
+      });
+
+      return Object.keys(counts).filter(p => counts[p] > 3);
+    } catch (err) {
+      console.warn("Spam monitoring failed", err);
+      return [];
+    }
+  };
+
+  const accessPatientData = async (patientInput, scope, purpose) => {
+    if (!accessContract || !consentContract) return;
+    try {
+      // Resolve Short ID to Wallet Address before contract call
+      const patient = await resolveWalletAddress(patientInput, walletMapperContract);
+
+      const provider = new ethers.BrowserProvider(window.ethereum);
+      const readContract = consentContract.connect(provider);
+
+      const res = await getSafePatientConsents(readContract, patient, CONSENT_MANAGER, provider);
+      const consentIndex = res.findIndex(c =>
+        c.isActive &&
+        c.dataFiduciary.toLowerCase() === account.toLowerCase() &&
+        Number(c.expiry) > Date.now() / 1000 &&
+        (c.dataScope === "All" || c.dataScope === scope)
+      );
+
+      if (consentIndex === -1) {
+        toast.error("No active consent found for this scope. Please request access first.");
+        return;
+      }
+
+      const tx = await accessContract.accessData(patient, consentIndex, scope || "All", purpose || "Clinical Purpose", { gasLimit: 1000000 });
       await tx.wait();
       toast.success("Data Accessed & Logged");
+      return true; // Success
     } catch (err) {
-      toast.error("Access Denied");
+      console.error(err);
+      toast.error("Access Denied: " + (err.reason || err.message));
+      return false;
+    }
+  };
+
+  const requestConsent = async (patientInput, purpose) => {
+    if (!consentContract) return;
+    try {
+      const patientAddress = await resolveWalletAddress(patientInput, walletMapperContract);
+      const tx = await consentContract.requestAccess(patientAddress, purpose, { gasLimit: 1000000 });
+      await tx.wait();
+      toast.success("Consent Request Sent to Patient");
+    } catch (err) {
+      toast.error("Request failed: " + (err.reason || err.message));
     }
   };
 
@@ -306,19 +439,46 @@ function App() {
     if (consentContract) loadConsents();
   }, [consentContract]);
 
+  useEffect(() => {
+    if (!auditLogContract || !account) return;
+
+    const accessedFilter = auditLogContract.filters.DataAccessed(account);
+    const requestedFilter = auditLogContract.filters.AccessRequested(account);
+
+    const onAccessed = (principal, fiduciary, purpose, timestamp) => {
+      const msg = `🚨 DPDP ALERT: Data accessed by ${fiduciary.slice(0, 10)}... for ${purpose}`;
+      toast.info(msg, { autoClose: 10000 });
+      setNotifications(prev => [{ msg, time: Date.now(), type: 'access' }, ...prev]);
+    };
+
+    const onRequested = (principal, fiduciary, purpose, timestamp) => {
+      const msg = `📩 NEW REQUEST: ${fiduciary.slice(0, 10)}... requesting access for ${purpose}`;
+      toast.warn(msg, { autoClose: 15000 });
+      setNotifications(prev => [{ msg, time: Date.now(), type: 'request' }, ...prev]);
+    };
+
+    auditLogContract.on(accessedFilter, onAccessed);
+    auditLogContract.on(requestedFilter, onRequested);
+
+    return () => {
+      auditLogContract.off(accessedFilter, onAccessed);
+      auditLogContract.off(requestedFilter, onRequested);
+    }
+  }, [auditLogContract, account]);
+
   const renderDashboard = () => {
     const commonProps = { account, consentContract, registryContract, auditLogContract, accessContract, medicalRecordsContract, walletMapperContract };
     const r = role?.toLowerCase();
 
     switch (r) {
-      case "hospital": return <HospitalDashboard {...commonProps} onRegisterHospital={registerHospital} onAccessPatientData={accessPatientData} />;
-      case "lab": return <LabDashboard {...commonProps} />;
-      case "doctor": return <DoctorDashboard {...commonProps} />;
-      case "pharmacy": return <PharmacyDashboard {...commonProps} />;
-      case "insurance": return <InsuranceDashboard {...commonProps} />;
+      case "hospital": return <HospitalDashboard {...commonProps} onRegisterHospital={registerHospital} onAccessPatientData={accessPatientData} onRequestConsent={requestConsent} onEmergencyAccess={performEmergencyAccess} />;
+      case "lab": return <LabDashboard {...commonProps} onRequestConsent={requestConsent} onAccessPatientData={accessPatientData} />;
+      case "doctor": return <DoctorDashboard {...commonProps} onRequestConsent={requestConsent} onAccessPatientData={accessPatientData} onEmergencyAccess={performEmergencyAccess} />;
+      case "pharmacy": return <PharmacyDashboard {...commonProps} onRequestConsent={requestConsent} onAccessPatientData={accessPatientData} />;
+      case "insurance": return <InsuranceDashboard {...commonProps} onRequestConsent={requestConsent} onAccessPatientData={accessPatientData} />;
       case "auditor": return <RegulatorDashboard {...commonProps} />;
       case "admin": return <AdminDashboard account={account} />;
-      default: return <PatientDashboard {...commonProps} consents={consents} onGrantConsent={grantConsent} onRevokeConsent={revokeConsent} onEraseConsent={eraseConsent} onLoadConsents={loadConsents} />;
+      default: return <PatientDashboard {...commonProps} account={actingAsAccount || account} isActingAsBeneficiary={!!actingAsAccount} consents={consents} onGrantConsent={grantConsent} onRevokeConsent={revokeConsent} onEraseConsent={eraseConsent} onLoadConsents={loadConsents} onMonitorSpam={monitorAccessSpam} />;
     }
   };
 
@@ -332,23 +492,22 @@ function App() {
             onDisconnect={disconnectWallet}
             role={role}
             onConnect={connectWallet}
-            onRegister={() => setShowRoleForm(true)}
             onAdmin={connectAdmin}
           />
           <div className="landing-page animate-fade-in" style={{ padding: '80px 0 0 0', maxWidth: '100%', margin: '0', position: 'relative', overflow: 'hidden' }}>
             <MedicalBackground />
-            
+
             {/* Professional Hero Section */}
-            <div className="hero-section" style={{ 
-              background: 'radial-gradient(circle at top, #fff 0%, #f8faff 100%)', 
-              borderBottom: '1px solid var(--border-light)', 
-              padding: '8rem 2rem', 
+            <div className="hero-section" style={{
+              background: 'radial-gradient(circle at top, #fff 0%, #f8faff 100%)',
+              borderBottom: '1px solid var(--border-light)',
+              padding: '8rem 2rem',
               textAlign: 'center',
               position: 'relative'
             }}>
-              <div className="glass-panel" style={{ 
-                maxWidth: '1200px', 
-                margin: '0 auto', 
+              <div className="glass-panel" style={{
+                maxWidth: '1200px',
+                margin: '0 auto',
                 padding: '4rem 2rem',
                 background: 'rgba(255, 255, 255, 0.4)',
                 border: '1px solid rgba(255, 255, 255, 0.8)'
@@ -356,25 +515,25 @@ function App() {
                 <div className="status-badge" style={{ display: 'inline-flex', padding: '0.6rem 1.5rem', background: '#F0FDFA', color: '#0D9488', borderRadius: '30px', marginBottom: '2.5rem', fontSize: '0.85rem', fontWeight: '800', border: '1px solid #CCFBF1', letterSpacing: '0.1em' }}>
                   ✚ 24/7 BLOCKCHAIN SECURED ACCESS
                 </div>
-                <h1 className="hero-title" style={{ 
-                  color: '#1E3A8A', 
-                  fontSize: '5.2rem', 
-                  marginBottom: '1.5rem', 
+                <h1 className="hero-title" style={{
+                  color: '#1E3A8A',
+                  fontSize: '5.2rem',
+                  marginBottom: '1.5rem',
                   fontWeight: '900',
                   lineHeight: '1.1',
                   letterSpacing: '-0.04em'
                 }}>
-                  Patient-Centric <br/> <span style={{ color: '#14B8A6' }}>Data Governance</span>
+                  Patient-Centric <br /> <span style={{ color: '#14B8A6' }}>Data Governance</span>
                 </h1>
                 <p className="hero-subtitle" style={{ fontSize: '1.5rem', color: '#475569', maxWidth: '850px', margin: '0 auto', lineHeight: '1.6', fontWeight: '500' }}>
                   Empowering the future of clinical data privacy. Securely manage your medical history with immutable blockchain consent, in total alignment with the <span style={{ color: '#1E3A8A', fontWeight: '700' }}>DPDP Act 2023.</span>
                 </p>
                 <div style={{ marginTop: '3.5rem', display: 'flex', gap: '2rem', justifyContent: 'center' }}>
                   <button className="primary-btn" onClick={connectWallet} style={{ borderRadius: '50px', background: 'var(--medical-primary)' }}>
-                     Access Patient Portal
+                    Access Patient Portal
                   </button>
-                  <button className="secondary-btn" onClick={() => setShowRoleForm(true)} style={{ borderRadius: '50px', background: 'white' }}>
-                     Organization Registration
+                  <button className="secondary-btn" onClick={() => setShowBeneficiaryLogin(true)} style={{ borderRadius: '50px', background: 'white' }}>
+                    Beneficiary Access
                   </button>
                 </div>
               </div>
@@ -416,21 +575,21 @@ function App() {
           <div className="glass-panel" style={{ maxWidth: '900px', width: '90%', padding: '4rem', textAlign: 'center' }}>
             <h2 style={{ fontSize: '2.5rem', marginBottom: '1rem', fontWeight: '800' }}>Identity Verified</h2>
             <p style={{ color: 'var(--text-muted)', marginBottom: '3.5rem', fontSize: '1.1rem' }}>
-              Authentication successful for <code>{account.slice(0, 10)}...{account.slice(-8)}</code>. <br/>
+              Authentication successful for <code>{account.slice(0, 10)}...{account.slice(-8)}</code>. <br />
               Please select the clinical portal you wish to access:
             </p>
             <div className="dashboard-grid" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))' }}>
               {availableRoles.map(r => (
-                <button 
-                  key={r} 
-                  className="glass-panel floating-card" 
-                  onClick={() => { setRole(r.toLowerCase()); setShowContextSelection(false); }} 
-                  style={{ 
-                    padding: '3rem 1.5rem', 
-                    cursor: 'pointer', 
-                    display: 'flex', 
-                    flexDirection: 'column', 
-                    alignItems: 'center', 
+                <button
+                  key={r}
+                  className="glass-panel floating-card"
+                  onClick={() => { setRole(r.toLowerCase()); setShowContextSelection(false); }}
+                  style={{
+                    padding: '3rem 1.5rem',
+                    cursor: 'pointer',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    alignItems: 'center',
                     transition: 'all 0.4s ease',
                     border: '1px solid var(--glass-border)',
                     background: 'rgba(255,255,255,0.03)'
@@ -448,70 +607,59 @@ function App() {
         </div>
       ) : (
         <>
-          <Navbar 
-            account={account} 
-            role={role} 
-            onDisconnect={disconnectWallet} 
+          <Navbar
+            account={account}
+            role={role}
+            onDisconnect={disconnectWallet}
             onConnect={connectWallet}
-            onRegister={() => setShowRoleForm(true)}
             onAdmin={connectAdmin}
+            onSwitchRole={handleSwitchRole}
           />
           <div className="app-body" style={{ marginTop: '80px' }}>
             {role && <Sidebar role={role} activeTab={activeTab} onTabChange={handleTabChange} />}
             <main className="main-content">
-              {activeTab === "audit" ? <AuditLogs auditLogContract={auditLogContract} /> : renderDashboard()}
+              {(activeTab === "audit" && (role?.toLowerCase() === 'patient' || role?.toLowerCase() === 'admin')) ? <AuditLogs auditLogContract={auditLogContract} /> :
+                (activeTab === "internal-audit" && ['hospital', 'doctor', 'lab', 'pharmacy', 'insurance'].includes(role?.toLowerCase())) ? <AuditLogs auditLogContract={auditLogContract} fiduciaryFilter={account} /> :
+                  activeTab === "compliance" ? <LegalCompliance /> :
+                    renderDashboard()}
             </main>
           </div>
         </>
       )}
 
-      {showRoleForm && (
+      {showBeneficiaryLogin && (
         <div className="modal-overlay">
           <div className="modal">
             <div className="modal-header">
-              <h3>Register Organization</h3>
-              <button className="close-btn" onClick={() => setShowRoleForm(false)}>×</button>
+              <h3>Beneficiary Access</h3>
+              <button className="close-btn" onClick={() => setShowBeneficiaryLogin(false)}>×</button>
             </div>
-            <form onSubmit={submitRoleRequest} className="modal-body">
+            <form onSubmit={handleBeneficiaryLogin} className="modal-body">
               <div className="form-group">
-                <label>Name</label>
+                <label>Main Patient Address</label>
                 <input
                   type="text"
                   className="glass-input"
-                  value={reqOrgName}
-                  onChange={(e) => setReqOrgName(e.target.value)}
-                  placeholder="Organization or Facility Name"
-                  required
-                />
-              </div>
-              <div className="form-group">
-                <label>Wallet Address</label>
-                <input
-                  type="text"
-                  className="glass-input"
-                  value={reqWallet}
-                  onChange={(e) => setReqWallet(e.target.value)}
+                  value={beneficiaryLoginData.mainAccount}
+                  onChange={(e) => setBeneficiaryLoginData({ ...beneficiaryLoginData, mainAccount: e.target.value })}
                   placeholder="0x..."
                   required
                 />
               </div>
               <div className="form-group">
-                <label>Healthcare Role</label>
-                <select
+                <label>Access Password</label>
+                <input
+                  type="password"
                   className="glass-input"
-                  value={reqRole}
-                  onChange={(e) => setReqRole(e.target.value)}
-                >
-                  <option value="1">Hospital</option>
-                  <option value="2">Lab</option>
-                  <option value="3">Doctor</option>
-                  <option value="4">Pharmacy</option>
-                  <option value="5">Insurance</option>
-                </select>
+                  value={beneficiaryLoginData.password}
+                  onChange={(e) => setBeneficiaryLoginData({ ...beneficiaryLoginData, password: e.target.value })}
+                  placeholder="Enter your password"
+                  required
+                />
               </div>
               <div className="modal-actions">
-                <button type="submit" className="primary-btn">Submit Request</button>
-                <button type="button" className="secondary-btn" onClick={() => setShowRoleForm(false)}>Cancel</button>
+                <button type="submit" className="primary-btn">Request Access</button>
+                <button type="button" className="secondary-btn" onClick={() => setShowBeneficiaryLogin(false)}>Cancel</button>
               </div>
             </form>
           </div>

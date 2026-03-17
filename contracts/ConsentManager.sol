@@ -11,6 +11,7 @@ contract ConsentManager {
         address dataFiduciary;
         string purpose;
         string dataHash;
+        string dataScope; // e.g., "Lab Reports", "Prescriptions", "All"
         uint256 grantedAt;
         uint256 expiry;
         bool isActive;
@@ -41,6 +42,7 @@ contract ConsentManager {
         address _fiduciary,
         string memory _purpose,
         string memory _dataHash,
+        string memory _dataScope,
         uint256 _durationInSeconds
     ) external {
 
@@ -54,6 +56,7 @@ contract ConsentManager {
                 _fiduciary,
                 _purpose,
                 _dataHash,
+                _dataScope,
                 block.timestamp,
                 expiryTime,
                 true,
@@ -86,7 +89,8 @@ contract ConsentManager {
 
     function validateConsent(
         address _principal,
-        uint256 index
+        uint256 index,
+        string memory _requiredScope
     ) external view returns (bool) {
         Consent memory consent = consents[_principal][index];
 
@@ -95,10 +99,24 @@ contract ConsentManager {
             !consent.erased &&
             block.timestamp <= consent.expiry
         ) {
-            return true;
+            // Check scope - "All" matches everything, otherwise exact match
+            if (keccak256(abi.encodePacked(consent.dataScope)) == keccak256(abi.encodePacked("All"))) {
+                return true;
+            }
+            if (keccak256(abi.encodePacked(consent.dataScope)) == keccak256(abi.encodePacked(_requiredScope))) {
+                return true;
+            }
         }
 
         return false;
+    }
+
+    function updateConsentDuration(uint256 index, uint256 _newDurationInSeconds) external {
+        Consent storage consent = consents[msg.sender][index];
+        require(consent.isActive, "Consent not active");
+        
+        consent.expiry = block.timestamp + _newDurationInSeconds;
+        audit.logConsentGranted(msg.sender, consent.dataFiduciary, string(abi.encodePacked("Renewed: ", consent.purpose)), consent.expiry);
     }
 
     // --- NEW: Inbound Provider Access Requests ---
@@ -117,7 +135,7 @@ contract ConsentManager {
         }));
 
         // Log the formal request on-chain
-        audit.logDataAccessed(_patient, msg.sender, string(abi.encodePacked("Requested access for: ", _purpose)), block.timestamp);
+        audit.logAccessRequested(_patient, msg.sender, _purpose, block.timestamp);
     }
 
     function getPendingRequests(address _patient) external view returns (AccessRequest[] memory) {
@@ -143,7 +161,8 @@ contract ConsentManager {
     // Patient approves a specific pending request
     function approveRequest(
         uint256 _requestId,
-        string memory _dataHash, // Optional, can be empty if mapping via MedicalRecords
+        string memory _dataHash,
+        string memory _dataScope,
         uint256 _durationInSeconds
     ) external {
         
@@ -170,6 +189,7 @@ contract ConsentManager {
                 req.provider,
                 req.purpose,
                 _dataHash,
+                _dataScope,
                 block.timestamp,
                 expiryTime,
                 true,

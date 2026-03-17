@@ -17,10 +17,11 @@ contract DataAccessManager {
     function accessData(
         address _principal,
         uint256 index,
+        string memory scope,
         string memory purpose
     ) external {
 
-        bool valid = consentManager.validateConsent(_principal, index);
+        bool valid = consentManager.validateConsent(_principal, index, scope);
         require(valid, "Invalid or expired consent");
 
         audit.logDataAccessed(_principal, msg.sender, purpose, block.timestamp);

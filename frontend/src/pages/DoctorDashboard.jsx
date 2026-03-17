@@ -3,10 +3,24 @@ import { toast } from 'react-toastify';
 import { ethers } from 'ethers';
 import { fetchFromPinata, decryptData, encryptData, uploadToPinata } from '../utils/ipfsHelper';
 import { resolveWalletAddress } from '../utils/idMappingHelper';
+import { getSafePatientConsents, getSafePendingRequests } from '../utils/consentHelper';
 
-const DoctorDashboard = ({ account, consentContract, auditLogContract, accessContract, medicalRecordsContract, walletMapperContract }) => {
+const DoctorDashboard = ({
+    account,
+    consentContract,
+    auditLogContract,
+    accessContract,
+    medicalRecordsContract,
+    walletMapperContract,
+    onRequestConsent,
+    onAccessPatientData,
+    onEmergencyAccess
+}) => {
     const [patientWallet, setPatientWallet] = useState('');
     const [requestPurpose, setRequestPurpose] = useState('');
+    const [showEmergencyModal, setShowEmergencyModal] = useState(false);
+    const [emergencyJustification, setEmergencyJustification] = useState("");
+    const [attendingName, setAttendingName] = useState("");
     const [activeConsents, setActiveConsents] = useState([]);
     const [linkedRecords, setLinkedRecords] = useState([]);
     const [pendingSentRequests, setPendingSentRequests] = useState([]);
@@ -24,9 +38,12 @@ const DoctorDashboard = ({ account, consentContract, auditLogContract, accessCon
     const [rxMedicine, setRxMedicine] = useState('');
     const [rxDosage, setRxDosage] = useState('');
     const [rxDuration, setRxDuration] = useState('');
+    const [rxSensitivity, setRxSensitivity] = useState('Low');
     const [isUploading, setIsUploading] = useState(false);
+    // Consent & Access Settings
+    const [requestScope, setRequestScope] = useState('All');
+    const [accessScope, setAccessScope] = useState('All');
 
-    // --- NEW: Global Interaction History Fetching ---
     React.useEffect(() => {
         const loadHistory = async () => {
             if (!auditLogContract || !account) return;
@@ -34,7 +51,7 @@ const DoctorDashboard = ({ account, consentContract, auditLogContract, accessCon
                 const provider = new ethers.BrowserProvider(window.ethereum);
                 const readAudit = auditLogContract.connect(provider);
                 const logs = await readAudit.getLogs();
-                
+
                 const normalizedDoctor = account.toLowerCase();
                 // Filter for any interaction where this doctor was the fiduciary
                 const uniquePatients = new Set();
@@ -50,7 +67,7 @@ const DoctorDashboard = ({ account, consentContract, auditLogContract, accessCon
                     if (walletMapperContract) {
                         try {
                             const mapperRead = walletMapperContract.connect(provider);
-                            short = await mapperRead.getShortId(wallet);
+                            short = await mapperRead.getShortIDFromWallet(wallet);
                         } catch (e) { console.warn("Short ID resolve failed", e); }
                     }
                     historyList.push({ wallet, shortId: short });
@@ -63,7 +80,7 @@ const DoctorDashboard = ({ account, consentContract, auditLogContract, accessCon
         };
         loadHistory();
     }, [auditLogContract, account]);
-    
+
     // Auto-sync all history details once history is resolved
     React.useEffect(() => {
         if (interactionHistory.length > 0) {
@@ -88,19 +105,19 @@ const DoctorDashboard = ({ account, consentContract, auditLogContract, accessCon
             for (const item of interactionHistory) {
                 const patient = item.wallet;
                 const shortId = item.shortId;
-                
+
                 // Fetch Consents
-                const patientConsents = await readConsent.getPatientConsents(patient);
+                const patientConsents = await getSafePatientConsents(readConsent, patient, consentContract.target, provider);
                 patientConsents.forEach(c => {
                     if (c.isActive && c.dataFiduciary.toLowerCase() === normalizedDoctor) {
                         if (c.dataHash) {
                             c.dataHash.split(',').forEach(cid => {
-                                if (cid.trim()) allLinked.push({ 
-                                    cid: cid.trim(), 
-                                    purpose: c.purpose, 
-                                    patient, 
+                                if (cid.trim()) allLinked.push({
+                                    cid: cid.trim(),
+                                    purpose: c.purpose,
+                                    patient,
                                     shortId,
-                                    sharedAt: c.grantedAt 
+                                    sharedAt: c.grantedAt
                                 });
                             });
                         }
@@ -108,10 +125,14 @@ const DoctorDashboard = ({ account, consentContract, auditLogContract, accessCon
                 });
 
                 // Fetch Pending Requests
-                const pending = await readConsent.getPendingRequests(patient);
-                pending.filter(r => r.provider.toLowerCase() === normalizedDoctor).forEach(r => {
-                    allPending.push({ ...r, patient, shortId });
-                });
+                try {
+                    const pending = await getSafePendingRequests(readConsent, patient, consentContract.target, provider);
+                    pending.filter(r => r.provider.toLowerCase() === normalizedDoctor).forEach(r => {
+                        allPending.push({ ...r, patient, shortId });
+                    });
+                } catch (pErr) {
+                    console.error("Failed to fetch pending for", patient, pErr);
+                }
 
                 // Fetch General Records
                 const records = await readMedical.getPatientRecords(patient);
@@ -145,7 +166,7 @@ const DoctorDashboard = ({ account, consentContract, auditLogContract, accessCon
             toast.error("Patient Wallet Address or Short ID is required");
             return;
         }
-        
+
         setLoading(true);
         let targetWallet = patientWallet;
         try {
@@ -165,7 +186,7 @@ const DoctorDashboard = ({ account, consentContract, auditLogContract, accessCon
             setLoading(true);
             toast.info("Sending on-chain request to Patient...");
 
-            if (!consentContract) throw new Error("Contract not connected");
+            if (!onRequestConsent) throw new Error("Request handler not connected");
 
             if (!requestPurpose) {
                 toast.error("Clinical Purpose is required");
@@ -173,10 +194,7 @@ const DoctorDashboard = ({ account, consentContract, auditLogContract, accessCon
                 return;
             }
 
-            const tx = await consentContract.requestAccess(targetWallet, requestPurpose, { gasLimit: 1000000 });
-            await tx.wait();
-
-            toast.success("Access Request sent to Patient!");
+            await onRequestConsent(targetWallet, requestPurpose);
             setRequestPurpose('');
 
         } catch {
@@ -231,8 +249,8 @@ const DoctorDashboard = ({ account, consentContract, auditLogContract, accessCon
                 // --- NEW: Fetch specifically linked records from ConsentManager ---
                 if (consentContract) {
                     const consentReadContract = consentContract.connect(provider);
-                    const patientConsents = await consentReadContract.getPatientConsents(targetWallet);
-                    
+                    const patientConsents = await getSafePatientConsents(consentReadContract, targetWallet, consentContract.target, provider);
+
                     const normalizedDoctor = account.toLowerCase();
                     const linked = [];
 
@@ -275,21 +293,15 @@ const DoctorDashboard = ({ account, consentContract, auditLogContract, accessCon
         }
     };
 
-    const accessMedicalData = async (consentId) => {
+    const accessMedicalData = async (consentId, scope = "All") => {
         try {
             if (!accessContract) return;
-            const tx = await accessContract.accessData(patientWallet, consentId, "Clinical Review");
+            const tx = await accessContract.accessData(patientWallet, consentId, scope, "Clinical Review", { gasLimit: 1000000 });
             await tx.wait();
-
-            // Log to Audit Log if contract available
-            if (auditLogContract && patientWallet) {
-                const nowSecs = Math.floor(Date.now() / 1000);
-                await auditLogContract.logDataAccessed(patientWallet, account, "Clinical Review", nowSecs, { gasLimit: 1000000 });
-            }
 
             toast.success("Identity Verified & Data Accessed");
         } catch (err) {
-            toast.error("Access rejected by blockchain policy");
+            toast.error("Access rejected: " + (err.reason || err.message));
         }
     };
 
@@ -304,21 +316,21 @@ const DoctorDashboard = ({ account, consentContract, auditLogContract, accessCon
             setIsDecrypting(true);
             setDecryptedRecord(null); // Clear old view
             toast.info("Fetching encrypted payload from IPFS nodes...");
-            
+
             const cipherText = await fetchFromPinata(cidToUse);
 
             toast.info("Decrypting ciphertext with local key...");
             await new Promise(r => setTimeout(r, 600));
 
             const rawData = decryptData(cipherText);
-            
+
             // Enrich with patient metadata if provided
             setDecryptedRecord({
                 ...rawData,
                 patientShortId: patientMeta?.shortId || "Unknown",
                 patientWallet: patientMeta?.wallet || "Unknown"
             });
-            
+
             toast.success("Data successfully decrypted!");
 
             // Log decryption action to audit trail
@@ -364,10 +376,11 @@ const DoctorDashboard = ({ account, consentContract, auditLogContract, accessCon
             const prescriptionData = {
                 type: 'Prescription',
                 patientRef: rxPatientName,
-                clinicalData: `Medication: ${rxMedicine}, Dosage: ${rxDosage}, Duration: ${rxDuration}`, // Fallback
+                clinicalData: `Medication: ${rxMedicine}, Dosage: ${rxDosage}, Duration: ${rxDuration}`,
                 medication: rxMedicine,
                 dosage: rxDosage,
                 duration: rxDuration,
+                sensitivity: rxSensitivity, // TAGGING
                 timestamp: new Date().toISOString()
             };
 
@@ -409,14 +422,23 @@ const DoctorDashboard = ({ account, consentContract, auditLogContract, accessCon
                     <h2>Physician Portal</h2>
                     <p style={{ color: 'var(--text-secondary)' }}>Secure clinical access governed by DPDP 2023.</p>
                 </div>
-                <button 
-                  className="secondary-btn" 
-                  onClick={syncAllHistory} 
-                  disabled={loading || interactionHistory.length === 0}
-                  style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}
-                >
-                  {loading ? "Syncing..." : "🔄 Sync All History"}
-                </button>
+                <div style={{ display: 'flex', gap: '1rem' }}>
+                    <button
+                        className="primary-btn"
+                        style={{ backgroundColor: '#EF4444' }}
+                        onClick={() => setShowEmergencyModal(true)}
+                    >
+                        🚨 Emergency
+                    </button>
+                    <button
+                        className="secondary-btn"
+                        onClick={syncAllHistory}
+                        disabled={loading || interactionHistory.length === 0}
+                        style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}
+                    >
+                        {loading ? "Syncing..." : "🔄 Sync"}
+                    </button>
+                </div>
             </div>
 
             <div className="dashboard-grid">
@@ -489,6 +511,14 @@ const DoctorDashboard = ({ account, consentContract, auditLogContract, accessCon
                             <input type="text" className="glass-input" placeholder="7 days" value={rxDuration} onChange={(e) => setRxDuration(e.target.value)} required />
                         </div>
                     </div>
+                    <div className="form-group" style={{ gridColumn: '1 / -1' }}>
+                        <label>Data Sensitivity (DPDP Rating) *</label>
+                        <select className="glass-input" value={rxSensitivity} onChange={e => setRxSensitivity(e.target.value)}>
+                            <option value="Low">Low (Standard Rx)</option>
+                            <option value="Medium">Medium (Controlled Substances)</option>
+                            <option value="High">High (Sensitive Psych/Chronic)</option>
+                        </select>
+                    </div>
                     <div style={{ gridColumn: '1 / -1', marginTop: '1rem' }}>
                         <button type="submit" className="primary-btn" disabled={isUploading} style={{ width: '100%' }}>
                             {isUploading ? "Encrypting & Queuing..." : "Encrypt & Send to Pharmacy Queue"}
@@ -544,41 +574,41 @@ const DoctorDashboard = ({ account, consentContract, auditLogContract, accessCon
 
                 <div className="table-container">
                     <table className="data-table">
-                    <thead>
-                        <tr>
-                            <th>Patient ID</th>
-                            <th>Record Type</th>
-                            <th>Status</th>
-                            <th>IPFS Hash</th>
-                            <th>Action</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {activeConsents.length === 0 ? (
-                            <tr><td colSpan="4" style={{ textAlign: 'center', padding: '3rem' }}>No general records found.</td></tr>
-                        ) : (
-                            activeConsents.map(c => (
-                                <tr key={c.id}>
-                                    <td><strong style={{ color: 'var(--medical-primary)' }}>{c.shortId}</strong></td>
-                                    <td>{c.type}</td>
-                                    <td><span className="status-badge active">{c.status}</span></td>
-                                    <td style={{ fontFamily: 'monospace', fontSize: '0.85em', color: 'var(--text-secondary)' }}>{c.cid.slice(0, 12)}...</td>
-                                    <td>
-                                        <button className="secondary-btn" onClick={() => {
-                                            setIpfsCid(c.cid);
-                                            handleDecryptRecord(c.cid, { wallet: c.patient, shortId: c.shortId });
-                                            window.scrollTo({ top: document.body.scrollHeight, behavior: 'smooth' });
-                                        }}>
-                                            Decrypt
-                                        </button>
-                                    </td>
-                                </tr>
-                            ))
-                        )}
-                    </tbody>
-                </table>
+                        <thead>
+                            <tr>
+                                <th>Patient ID</th>
+                                <th>Record Type</th>
+                                <th>Status</th>
+                                <th>IPFS Hash</th>
+                                <th>Action</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {activeConsents.length === 0 ? (
+                                <tr><td colSpan="4" style={{ textAlign: 'center', padding: '3rem' }}>No general records found.</td></tr>
+                            ) : (
+                                activeConsents.map(c => (
+                                    <tr key={c.id}>
+                                        <td><strong style={{ color: 'var(--medical-primary)' }}>{c.shortId}</strong></td>
+                                        <td>{c.type}</td>
+                                        <td><span className="status-badge active">{c.status}</span></td>
+                                        <td style={{ fontFamily: 'monospace', fontSize: '0.85em', color: 'var(--text-secondary)' }}>{c.cid.slice(0, 12)}...</td>
+                                        <td>
+                                            <button className="secondary-btn" onClick={() => {
+                                                setIpfsCid(c.cid);
+                                                handleDecryptRecord(c.cid, { wallet: c.patient, shortId: c.shortId });
+                                                window.scrollTo({ top: document.body.scrollHeight, behavior: 'smooth' });
+                                            }}>
+                                                Decrypt
+                                            </button>
+                                        </td>
+                                    </tr>
+                                ))
+                            )}
+                        </tbody>
+                    </table>
+                </div>
             </div>
-          </div>
 
             {linkedRecords.length > 0 || pendingSentRequests.length > 0 ? (
                 <div className="dashboard-section glass-panel" style={{ borderTop: '6px solid var(--medical-primary)' }}>
@@ -645,6 +675,65 @@ const DoctorDashboard = ({ account, consentContract, auditLogContract, accessCon
                     </div>
                 </div>
             ) : null}
+
+            {showEmergencyModal && (
+                <div className="modal-overlay">
+                    <div className="modal" style={{ borderColor: '#EF4444' }}>
+                        <div className="modal-header">
+                            <h3 style={{ color: '#EF4444' }}>🚨 EMERGENCY BREAK-GLASS ACCESS</h3>
+                            <button className="close-btn" onClick={() => setShowEmergencyModal(false)}>×</button>
+                        </div>
+                        <div className="modal-body">
+                            <div className="alert-warning" style={{ background: '#FEF2F2', border: '1px solid #FCA5A5', padding: '1rem', borderRadius: '8px', marginBottom: '1.5rem', color: '#991B1B', fontSize: '0.9rem' }}>
+                                <strong>WARNING:</strong> This action overrides normal consent. A permanent, immutable justification will be logged on the Hedera ledger.
+                            </div>
+                            <div className="form-group">
+                                <label>Patient Wallet / Short ID *</label>
+                                <input
+                                    className="glass-input"
+                                    value={patientWallet}
+                                    onChange={(e) => setPatientWallet(e.target.value)}
+                                    placeholder="0x... or Short ID"
+                                />
+                            </div>
+                            <div className="form-group">
+                                <label>Attending Physician Name *</label>
+                                <input
+                                    className="glass-input"
+                                    value={attendingName}
+                                    onChange={(e) => setAttendingName(e.target.value)}
+                                    placeholder="e.g. Dr. Jane Smith"
+                                    required
+                                />
+                            </div>
+                            <div className="form-group">
+                                <label>Emergency Justification *</label>
+                                <textarea
+                                    className="glass-input"
+                                    rows="3"
+                                    placeholder="e.g. Life-saving intervention required."
+                                    value={emergencyJustification}
+                                    onChange={(e) => setEmergencyJustification(e.target.value)}
+                                />
+                            </div>
+                            <div className="modal-actions">
+                                <button className="primary-btn" style={{ background: '#EF4444', width: '100%' }} onClick={async () => {
+                                    if (!patientWallet || !emergencyJustification || !attendingName) return toast.error("Required fields missing");
+                                    const success = await onEmergencyAccess(patientWallet, emergencyJustification, attendingName);
+                                    if (success) {
+                                        setShowEmergencyModal(false);
+                                        setEmergencyJustification("");
+                                        setAttendingName("");
+                                        fetchAuthorizedRecords();
+                                    }
+                                }}>
+                                    Initiate Emergency Access
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 };

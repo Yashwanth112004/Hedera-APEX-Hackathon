@@ -1,7 +1,7 @@
 import { ethers } from 'ethers';
 
 // Replace with actual deployed address read from last_mapper.txt
-export const WALLET_MAPPER_ADDRESS = "0x03650175507C7555dc6896486DcdE213C7fe8Eb1";
+export const WALLET_MAPPER_ADDRESS = "0xE37d6EE16b9C6eE7C29eD93a5b2Bde40e225E659";
 
 export const WALLET_MAPPER_ABI = [
   "function registerShortID(string calldata _shortID) external",
@@ -32,7 +32,7 @@ export const normalizeAddress = (address) => {
 export const generateLocalShortID = (walletAddress) => {
   const normalized = normalizeAddress(walletAddress);
   if (!normalized || normalized.length < 4) return null;
-  
+
   // Use a more robust random for IDs to avoid collisions
   const rand = Math.floor(Math.random() * 1000).toString().padStart(3, '0');
   const tail = normalized.slice(-3).toUpperCase();
@@ -48,12 +48,12 @@ export const generateLocalShortID = (walletAddress) => {
  */
 export const resolveWalletAddress = async (input, walletMapperContract) => {
   if (!input) return "";
-  
+
   // If it's already a valid Ethereum address, return it
   if (ethers.isAddress(input)) {
     return input;
   }
-  
+
   // If it's 6 chars long, attempt to resolve via the WalletMapper contract
   if (input.length === 6 && walletMapperContract) {
     try {

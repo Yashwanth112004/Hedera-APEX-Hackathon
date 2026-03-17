@@ -22,6 +22,13 @@ contract AuditLog {
         uint256 timestamp
     );
 
+    event AccessRequested(
+        address indexed dataPrincipal,
+        address indexed fiduciary,
+        string purpose,
+        uint256 timestamp
+    );
+
     event ErasureRequested(
         address indexed dataPrincipal,
         uint256 timestamp
@@ -63,6 +70,16 @@ contract AuditLog {
     ) external {
         allLogs.push(ActionLog(_principal, _fiduciary, "Data Accessed", _purpose, _timestamp));
         emit DataAccessed(_principal, _fiduciary, _purpose, _timestamp);
+    }
+
+    function logAccessRequested(
+        address _principal,
+        address _fiduciary,
+        string memory _purpose,
+        uint256 _timestamp
+    ) external {
+        allLogs.push(ActionLog(_principal, _fiduciary, "Access Requested", _purpose, _timestamp));
+        emit AccessRequested(_principal, _fiduciary, _purpose, _timestamp);
     }
 
     function logErasureRequested(

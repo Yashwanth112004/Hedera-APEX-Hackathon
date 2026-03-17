@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { ethers } from 'ethers';
 
-const AuditLogs = ({ auditLogContract }) => {
+const AuditLogs = ({ auditLogContract, fiduciaryFilter }) => {
   const [logs, setLogs] = useState([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState('all');
@@ -24,7 +24,11 @@ const AuditLogs = ({ auditLogContract }) => {
         txHash: 'On-Chain Record',
         status: 'Success'
       }));
-      setLogs(formattedLogs.reverse()); // Show newest first
+      const finalLogs = fiduciaryFilter 
+        ? formattedLogs.filter(l => l.hospitalAddress.toLowerCase() === fiduciaryFilter.toLowerCase())
+        : formattedLogs;
+        
+      setLogs(finalLogs.reverse()); // Show newest first
     } catch (err) {
       console.error("Failed to fetch audit logs:", err);
     } finally {

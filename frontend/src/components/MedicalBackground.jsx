@@ -6,10 +6,15 @@ import * as THREE from 'three';
 const Molecule = ({ position, color, speed = 1, distort = 0.3 }) => {
   const mesh = useRef();
   
-  useFrame((state) => {
-    const time = state.clock.getElapsedTime();
-    mesh.current.position.y += Math.sin(time * speed) * 0.002;
-    mesh.current.rotation.x = mesh.current.rotation.y += 0.01;
+  useFrame(() => {
+    // Avoid THREE.Clock deprecation and state.clock access warnings 
+    // by using native performance.now() for high-precision time
+    const time = (typeof performance !== 'undefined' ? performance.now() : Date.now()) / 1000;
+    
+    if (mesh.current) {
+      mesh.current.position.y += Math.sin(time * speed) * 0.002;
+      mesh.current.rotation.x = mesh.current.rotation.y += 0.01;
+    }
   });
 
   return (
@@ -38,7 +43,16 @@ const MedicalBackground = () => {
       pointerEvents: 'none',
       opacity: 0.6
     }}>
-      <Canvas camera={{ position: [0, 0, 10], fov: 50 }}>
+      <Canvas 
+        camera={{ position: [0, 0, 10], fov: 50 }}
+        dpr={[1, 2]}
+        gl={{ 
+            powerPreference: "high-performance",
+            antialias: true,
+            alpha: true,
+            preserveDrawingBuffer: true
+        }}
+      >
         <ambientLight intensity={0.5} />
         <pointLight position={[10, 10, 10]} intensity={1} />
         <spotLight position={[-10, 10, 10]} angle={0.15} penumbra={1} />

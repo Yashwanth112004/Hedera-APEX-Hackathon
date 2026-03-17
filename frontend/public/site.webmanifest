@@ -1,0 +1,9 @@
+{
+  "short_name": "DPDP Consent",
+  "name": "DPDP Healthcare Consent Network",
+  "icons": [],
+  "start_url": ".",
+  "display": "standalone",
+  "theme_color": "#1E3A8A",
+  "background_color": "#ffffff"
+}

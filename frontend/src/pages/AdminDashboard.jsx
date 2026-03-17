@@ -3,7 +3,7 @@ import { ethers } from "ethers";
 import { toast } from "react-toastify";
 
 // Use the provided Role Based Smart Contract Address
-const RBAC_ADDRESS = "0xc285Cba71f206fd6AB83514D82Dd389Fe0584919";
+const RBAC_ADDRESS = "0x0b11e9AA48bf573A8E9d1D5085b71d8c58de9968";
 
 const roleABI = [
   "function registerRole(address user, uint8 role)",
@@ -34,7 +34,18 @@ export default function AdminDashboard() {
       for (const rawWallet of uniqueWallets) {
         try {
           const safeWallet = ethers.getAddress(rawWallet);
-          const roleId = await contract.getRole(safeWallet);
+          let roleId = await contract.getRole(safeWallet);
+
+          // FALLBACK: Check secondary RBAC for legacy mappings
+          if (Number(roleId) === 0) {
+            try {
+              const secondaryRBAC = "0xc285Cba71f206fd6AB83514D82Dd389Fe0584919";
+              const secondaryContract = new ethers.Contract(secondaryRBAC, roleABI, provider);
+              const legacyId = await secondaryContract.getRole(safeWallet);
+              if (Number(legacyId) !== 0) roleId = legacyId;
+            } catch (e) { }
+          }
+
           if (Number(roleId) !== 0) {
             active.push({ wallet: safeWallet, roleId: Number(roleId) });
           }

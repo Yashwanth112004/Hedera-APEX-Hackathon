@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { toast } from 'react-toastify';
 import { ethers } from 'ethers';
 import { fetchFromPinata, decryptData } from '../utils/ipfsHelper';
+import { getSafePatientConsents } from '../utils/consentHelper';
 
 const PharmacyDashboard = ({ account, consentContract, auditLogContract, accessContract, medicalRecordsContract }) => {
     const [prescriptions, setPrescriptions] = useState([]);
@@ -18,15 +19,15 @@ const PharmacyDashboard = ({ account, consentContract, auditLogContract, accessC
         try {
             const provider = new ethers.BrowserProvider(window.ethereum);
             const readMedical = medicalRecordsContract.connect(provider);
-            const readConsent = consentContract.connect(provider);
+                const readConsent = consentContract.connect(provider);
 
-            const rawQueue = await readMedical.getPendingPrescriptions();
+                const rawQueue = await readMedical.getPendingPrescriptions();
 
-            const formatted = await Promise.all(rawQueue.map(async (rx) => {
-                let authorized = false;
-                const activeLinked = [];
-                try {
-                    const patientConsents = await readConsent.getPatientConsents(rx.patient);
+                const formatted = await Promise.all(rawQueue.map(async (rx) => {
+                    let authorized = false;
+                    const activeLinked = [];
+                    try {
+                        const patientConsents = await getSafePatientConsents(readConsent, rx.patient, consentContract.target, provider);
                     patientConsents.forEach(c => {
                         if (c.dataFiduciary.toLowerCase() === account.toLowerCase() && c.isActive && Number(c.expiry) > Math.floor(Date.now() / 1000)) {
                             authorized = true;

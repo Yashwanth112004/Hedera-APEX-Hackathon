@@ -2,7 +2,7 @@ import React from 'react';
 import { toast } from 'react-toastify';
 import { Sun, Moon, Hospital } from 'lucide-react';
 
-const Navbar = ({ account, onDisconnect, role, onConnect, onRegister, onAdmin }) => {
+const Navbar = ({ account, onDisconnect, role, onConnect, onRegister, onAdmin, onSwitchRole }) => {
   const handleDisconnect = () => {
     onDisconnect();
     toast.info('Wallet disconnected');
@@ -85,28 +85,33 @@ const Navbar = ({ account, onDisconnect, role, onConnect, onRegister, onAdmin })
                     {account.slice(0, 6)}...{account.slice(-4)}
                   </p>
                   {role && (
-                    <span className="role-badge" style={{ fontSize: '0.65rem', background: 'var(--grad-teal)' }}>
-                      {role}
+                    <span className="role-badge" style={{ fontSize: '0.65rem', background: 'var(--grad-teal)', cursor: 'pointer' }} onClick={onSwitchRole} title="Click to switch role">
+                      {role} 🔄
                     </span>
                   )}
                 </div>
               </div>
 
+              {role && (
+                <button 
+                  className="secondary-btn" 
+                  onClick={onSwitchRole}
+                  style={{ padding: '8px 12px', fontSize: '0.8rem' }}
+                >
+                  Switch Role
+                </button>
+              )}
+
               <button 
                 className="secondary-btn" 
                 onClick={handleDisconnect}
+                style={{ borderColor: '#FECACA', color: '#B91C1C' }}
               >
                 Disconnect
               </button>
             </div>
           ) : (
             <div className="navbar-actions" style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
-              <button 
-                className="secondary-btn" 
-                onClick={onRegister}
-              >
-                Org Registration
-              </button>
               <button 
                 className="secondary-btn" 
                 onClick={onAdmin}
