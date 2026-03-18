@@ -22,7 +22,19 @@ export const getSafePatientConsents = async (consentContract, patientAddress, co
     try {
         // Attempt normal fetch with current ABI
         const res = await consentContract.getPatientConsents(patientAddress);
-        return res;
+        // Normalize ethers.js Result tuples to plain JS objects
+        // (Result proxy objects can lose property accessors when passed as React props)
+        return res.map(c => ({
+            dataPrincipal: c.dataPrincipal,
+            dataFiduciary: c.dataFiduciary,
+            purpose: c.purpose,
+            dataHash: c.dataHash,
+            dataScope: c.dataScope || "All",
+            grantedAt: c.grantedAt,
+            expiry: c.expiry,
+            isActive: Boolean(c.isActive),
+            erased: Boolean(c.erased)
+        }));
     } catch (decodeErr) {
         // Detect "BAD_DATA" or decoding errors typical of ABI mismatch on Hedera
         if (decodeErr.code === "BAD_DATA" || (decodeErr.message && decodeErr.message.includes("could not decode"))) {

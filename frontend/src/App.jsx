@@ -115,6 +115,7 @@ function App() {
   const [auditLogContract, setAuditLog] = useState(null);
   const [medicalRecordsContract, setMedicalRecords] = useState(null);
   const [walletMapperContract, setWalletMapper] = useState(null);
+  const [rbacContract, setRBAC] = useState(null);
 
   const [consents, setConsents] = useState([]);
   const [notifications, setNotifications] = useState([]);
@@ -150,6 +151,7 @@ function App() {
       setAuditLog(new ethers.Contract(AUDIT_LOG, auditLogABI, signer));
       setMedicalRecords(new ethers.Contract(MEDICAL_RECORDS, medicalRecordsABI, signer));
       setWalletMapper(new ethers.Contract(WALLET_MAPPER_ADDRESS, WALLET_MAPPER_ABI, signer));
+      setRBAC(new ethers.Contract(RBAC_CONTRACT_ADDRESS, roleABI, signer));
 
       const rolesToSelect = ["Patient"];
       try {
@@ -313,6 +315,7 @@ function App() {
       const readContract = consentContract.connect(provider);
 
       const res = await getSafePatientConsents(readContract, safeAccount, CONSENT_MANAGER, provider);
+      console.log("[App] loadConsents result for", safeAccount, ":", res.length, "consents", res.map(c => ({ active: c.isActive, expiry: Number(c.expiry), purpose: c.purpose })));
       setConsents(res);
     } catch (err) {
       console.error("Consent Load Failure:", err);
@@ -424,8 +427,8 @@ function App() {
   };
 
   useEffect(() => {
-    if (consentContract) loadConsents();
-  }, [consentContract]);
+    if (consentContract && account) loadConsents();
+  }, [consentContract, account, role, actingAsAccount]);
 
   useEffect(() => {
     if (!auditLogContract || !account) return;
@@ -455,7 +458,7 @@ function App() {
   }, [auditLogContract, account]);
 
   const renderDashboard = () => {
-    const commonProps = { account, consentContract, registryContract, auditLogContract, accessContract, medicalRecordsContract, walletMapperContract };
+    const commonProps = { account, consentContract, registryContract, auditLogContract, accessContract, medicalRecordsContract, walletMapperContract, rbacContract };
     const r = role?.toLowerCase();
 
     switch (r) {

@@ -1,8 +1,9 @@
 import React, { useState } from 'react';
 import { toast } from 'react-toastify';
 import { ethers } from 'ethers';
-import { encryptData, uploadToPinata } from '../utils/ipfsHelper';
+import { encryptData, uploadToPinata, fetchFromPinata, decryptData } from '../utils/ipfsHelper';
 import { resolveWalletAddress } from '../utils/idMappingHelper';
+import { getSafePatientConsents } from '../utils/consentHelper';
 
 const labTestRegistry = {
   "Blood Tests": [
@@ -77,7 +78,8 @@ const LabDashboard = ({
     category: '',
     testType: '',
     reportData: '',
-    sensitivity: 'Medium'
+    sensitivity: 'Medium',
+    authorizedDoctor: ''
   });
   const [selectedFile, setSelectedFile] = useState(null);
 
@@ -91,11 +93,18 @@ const LabDashboard = ({
 
   // Consent & Access State
   const [showRequestModal, setShowRequestModal] = useState(false);
-  const [requestData, setRequestData] = useState({ patientWallet: '', purpose: '', scope: 'Lab Reports' });
+  const [requestData, setRequestData] = useState({ patientWallet: '', purpose: '', requesterName: '', scope: 'Lab Reports' });
   const [viewDataSettings, setViewDataSettings] = useState({ scope: 'Lab Reports', purpose: 'Diagnostic Review' });
   const [scannedPatient, setScannedPatient] = useState('');
   const [interactionHistory, setInteractionHistory] = useState([]);
   const [loading, setLoading] = useState(false);
+  const [viewingReport, setViewingReport] = useState(null);
+
+  // New states for fetching & viewing approved patient data
+  const [activeConsents, setActiveConsents] = useState([]);
+  const [ipfsCid, setIpfsCid] = useState('');
+  const [decryptedRecord, setDecryptedRecord] = useState(null);
+  const [isDecrypting, setIsDecrypting] = useState(false);
 
   React.useEffect(() => {
     const loadHistory = async () => {
@@ -173,8 +182,8 @@ const LabDashboard = ({
 
   const handleUploadReport = async (e) => {
     e.preventDefault();
-    if (!uploadData.patientAddress || !uploadData.category || !uploadData.testType || !uploadData.reportData) {
-      toast.error('Please fill all required fields');
+    if (!uploadData.patientAddress || !uploadData.category || !uploadData.testType || !uploadData.reportData || !uploadData.authorizedDoctor) {
+      toast.error('Please fill all required fields, including Authorized Doctor Name');
       return;
     }
 
@@ -203,7 +212,7 @@ const LabDashboard = ({
         patientRef: targetWallet,
         category: uploadData.category,
         testType: uploadData.testType,
-        clinicalData: uploadData.reportData,
+        clinicalData: `[Authorized Doctor: ${uploadData.authorizedDoctor}]\n\n${uploadData.reportData}`,
         sensitivity: uploadData.sensitivity, // TAGGING
         fileData: fileDataBase64,
         fileName: selectedFile ? selectedFile.name : null,
@@ -227,7 +236,7 @@ const LabDashboard = ({
       ]);
 
       setShowUploadForm(false);
-      setUploadData({ patientAddress: '', category: '', testType: '', reportData: '', sensitivity: 'Medium' });
+      setUploadData({ patientAddress: '', category: '', testType: '', reportData: '', sensitivity: 'Medium', authorizedDoctor: '' });
       setSelectedFile(null);
       toast.success(`Securely Mapped On-Chain! CID: ${ipfsCid.slice(0, 8)}...`);
     } catch (err) {
@@ -238,10 +247,46 @@ const LabDashboard = ({
 
   const handleRequestConsent = async (e) => {
     e.preventDefault();
+    if (!requestData.requesterName) {
+        toast.error("Please provide a Requester Name");
+        return;
+    }
+    const fullPurpose = `[${requestData.requesterName}] ${requestData.purpose}`;
     try {
-      await onRequestConsent(requestData.patientWallet, requestData.purpose);
+      await onRequestConsent(requestData.patientWallet, fullPurpose);
       setShowRequestModal(false);
+      setRequestData({ ...requestData, purpose: '', requesterName: '' });
     } catch { toast.error("Request failed"); }
+  };
+
+  const fetchAuthorizedRecords = async (targetWallet) => {
+      setLoading(true);
+      try {
+          if (medicalRecordsContract && consentContract) {
+              const provider = new ethers.BrowserProvider(window.ethereum);
+              const readMedical = medicalRecordsContract.connect(provider);
+              const readConsent = consentContract.connect(provider);
+
+              const records = await readMedical.getPatientRecords(targetWallet);
+              const formatted = records.map(r => ({
+                  id: r.id.toString(),
+                  type: r.recordType,
+                  status: "Authorized",
+                  cid: r.cid,
+                  provider: r.provider,
+                  patient: targetWallet
+              }));
+
+              setActiveConsents(formatted);
+          } else {
+              toast.error("Contracts not loaded");
+          }
+      } catch (err) {
+          console.error(err);
+          toast.error("Failed to fetch records. Patient may not have granted access.");
+      } finally {
+          setLoading(false);
+      }
   };
 
   const handleAccessPatientData = async () => {
@@ -249,14 +294,61 @@ const LabDashboard = ({
       toast.error("Please enter a patient wallet");
       return;
     }
+    setLoading(true);
+    let targetWallet = requestData.patientWallet;
     try {
-      const success = await onAccessPatientData(requestData.patientWallet, viewDataSettings.scope, viewDataSettings.purpose);
+        targetWallet = await resolveWalletAddress(requestData.patientWallet, walletMapperContract);
+    } catch(e) { 
+        toast.error(e.message); 
+        setLoading(false);
+        return; 
+    }
+
+    try {
+      // First, trigger access log on-chain
+      const success = await onAccessPatientData(targetWallet, viewDataSettings.scope, viewDataSettings.purpose);
       if (success) {
-        setScannedPatient(requestData.patientWallet);
-        toast.success("Authorized records fetched");
+        setScannedPatient(targetWallet);
+        toast.success("Identity verified, mapping records...");
+        await fetchAuthorizedRecords(targetWallet);
         syncLabActivity();
       }
     } catch { toast.error("Access denied"); }
+    finally { setLoading(false); }
+  };
+
+  const handleDecryptRecord = async (targetCid = null, patientMeta = null) => {
+      const cidToUse = targetCid || ipfsCid;
+      if (!cidToUse) {
+          toast.error("Please provide a valid IPFS CID");
+          return;
+      }
+      try {
+          setIsDecrypting(true);
+          setDecryptedRecord(null); 
+          toast.info("Fetching encrypted payload from IPFS nodes...");
+
+          const cipherText = await fetchFromPinata(cidToUse);
+          toast.info("Decrypting ciphertext with local key...");
+          await new Promise(r => setTimeout(r, 600));
+
+          const rawData = decryptData(cipherText);
+          setDecryptedRecord({
+              ...rawData,
+              patientWallet: patientMeta?.wallet || scannedPatient || "Unknown"
+          });
+          toast.success("Data successfully decrypted!");
+
+          if (auditLogContract && scannedPatient && ethers.isAddress(scannedPatient)) {
+              const nowSecs = Math.floor(Date.now() / 1000);
+              await auditLogContract.logDataAccessed(scannedPatient, account, "IPFS Record Decryption", nowSecs, { gasLimit: 1000000 });
+          }
+      } catch (error) {
+          toast.error(error.message || "Failed to decrypt record.");
+          setDecryptedRecord(null);
+      } finally {
+          setIsDecrypting(false);
+      }
   };
 
   const submitRoleRequest = (e) => {
@@ -271,12 +363,11 @@ const LabDashboard = ({
     setReqWallet("");
   };
 
-  const dashboardCards = [
-    { title: 'Uploaded Reports', value: 0, icon: '📤', color: 'var(--status-approved)' },
-    { title: 'Authorized Records', value: 0, icon: '🔐', color: 'var(--status-info)' },
-    { title: 'Pending Uploads', value: 0, icon: '⏳', color: 'var(--status-pending)' },
-    { title: 'Access History', value: 0, icon: '🔍', color: 'var(--medical-secondary)' }
-  ];
+    const dashboardCards = [
+        { title: 'Total Anchored Reports', value: recentReports.length, icon: '📜', color: 'var(--medical-primary)' },
+        { title: 'Verified Test Subjects', value: interactionHistory.length, icon: '👥', color: 'var(--medical-secondary)' },
+        { title: 'High Sensitivity Data', value: recentReports.filter(r => r.type?.toLowerCase().includes('genetic') || r.type?.toLowerCase().includes('hiv')).length, icon: '🛡️', color: 'var(--status-rejected)' }
+    ];
 
 
   return (
@@ -289,18 +380,6 @@ const LabDashboard = ({
           <p style={{ color: 'var(--text-muted)', fontSize: '1.1rem' }}>Secure diagnostic data management and blockchain-anchored reports.</p>
         </div>
         <div className="dashboard-actions">
-          <button
-            className="primary-btn"
-            onClick={() => setShowRequestModal(true)}
-          >
-            Request Lab Access
-          </button>
-          <button
-            className="secondary-btn"
-            onClick={() => setShowOrgRegForm(true)}
-          >
-            Other Org Registration
-          </button>
         </div>
       </div>
 
@@ -329,7 +408,6 @@ const LabDashboard = ({
                 <th>Report Type</th>
                 <th>Date</th>
                 <th>Status</th>
-                <th>Actions</th>
               </tr>
             </thead>
             <tbody>
@@ -339,20 +417,17 @@ const LabDashboard = ({
                 </tr>
               ) : (
                 recentReports.map((report) => (
-                  <tr key={report.id}>
-                    <td><code title={report.cid} style={{ cursor: 'pointer', color: 'var(--medical-primary)' }}>{report.cid.slice(0, 12)}...</code></td>
-                    <td>{report.patient.slice(0, 8)}...</td>
-                    <td>{report.type}</td>
-                    <td>{report.date}</td>
-                    <td>
-                      <span className={`status-badge active`}>
-                        {report.status}
-                      </span>
-                    </td>
-                    <td>
-                      <button className="secondary-btn" style={{ padding: '0.4rem 0.8rem', fontSize: '0.8rem' }}>View</button>
-                    </td>
-                  </tr>
+                    <tr key={report.id}>
+                        <td><code title={report.cid} style={{ cursor: 'pointer', color: 'var(--medical-primary)' }}>{report.cid.slice(0, 12)}...</code></td>
+                        <td>{report.patient.slice(0, 8)}...</td>
+                        <td>{report.type}</td>
+                        <td>{report.date === "On-Chain" ? "⛓️ Immutable" : report.date}</td>
+                        <td>
+                            <span className={`status-badge active`}>
+                                {report.status}
+                            </span>
+                        </td>
+                    </tr>
                 ))
               )}
             </tbody>
@@ -398,88 +473,236 @@ const LabDashboard = ({
         </div>
       </div>
 
-      {showUploadForm && (
-        <div className="modal-overlay">
-          <div className="modal">
-            <div className="modal-header">
-              <h3>Upload Lab Report</h3>
-              <button className="close-btn" onClick={() => setShowUploadForm(false)}>×</button>
-            </div>
-            <form onSubmit={handleUploadReport} className="modal-body">
-              <div className="form-group">
-                <label>Patient Address *</label>
-                <input
-                  type="text"
-                  value={uploadData.patientAddress}
-                  onChange={(e) => setUploadData({ ...uploadData, patientAddress: e.target.value })}
-                  placeholder="0x..."
-                  required
-                />
-              </div>
-              <div className="form-group">
-                <label>Test Category *</label>
-                <select
-                  value={uploadData.category}
-                  onChange={(e) => setUploadData({ ...uploadData, category: e.target.value, testType: '' })}
-                  required
-                >
-                  <option value="">Select category</option>
-                  {Object.keys(labTestRegistry).map(cat => (
-                    <option key={cat} value={cat}>{cat}</option>
-                  ))}
-                </select>
-              </div>
-              <div className="form-group">
-                <label>Test Type *</label>
-                <select
-                  value={uploadData.testType}
-                  onChange={(e) => setUploadData({ ...uploadData, testType: e.target.value })}
-                  required
-                  disabled={!uploadData.category}
-                >
-                  <option value="">Select test type</option>
-                  {uploadData.category && labTestRegistry[uploadData.category].map(type => (
-                    <option key={type} value={type}>{type}</option>
-                  ))}
-                </select>
-              </div>
-              <div className="form-group">
-                <label>Report Data *</label>
-                <textarea
-                  value={uploadData.reportData}
-                  onChange={(e) => setUploadData({ ...uploadData, reportData: e.target.value })}
-                  placeholder="Enter report details or upload file..."
-                  rows="4"
-                  required
-                />
-              </div>
-              <div className="form-group">
-                <label>Data Sensitivity (DPDP Rating) *</label>
-                <select className="glass-input" value={uploadData.sensitivity} onChange={e => setUploadData({ ...uploadData, sensitivity: e.target.value })}>
-                  <option value="Low">Low (Routine Results)</option>
-                  <option value="Medium">Medium (Specialized Labs)</option>
-                  <option value="High">High (Genetic, HIV, Sensitive)</option>
-                </select>
-              </div>
-              <div className="form-group">
-                <label>Upload File</label>
-                <input
-                  type="file"
-                  accept=".pdf,.jpg,.png,.doc,.docx"
-                  onChange={(e) => setSelectedFile(e.target.files[0])}
-                />
-                {selectedFile && <span style={{ fontSize: '0.8rem', color: 'var(--status-approved)' }}>{selectedFile.name} selected</span>}
-              </div>
-              <div className="modal-actions">
-                <button type="submit" className="primary-btn">Upload Report</button>
-                <button type="button" className="secondary-btn" onClick={() => setShowUploadForm(false)}>
-                  Cancel
-                </button>
-              </div>
-            </form>
-          </div>
+      <div className="dashboard-section glass-panel" style={{ borderLeft: '6px solid var(--medical-accent)' }}>
+        <h3>IPFS Decryption Engine</h3>
+        <p style={{ fontSize: '0.9rem', color: 'var(--text-muted)', marginBottom: '2rem' }}>
+            Fetch patient data requested after consent is verified.
+        </p>
+        <div style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
+            <input
+                type="text"
+                className="glass-input"
+                placeholder="Enter IPFS CID (e.g., Qm...)"
+                value={ipfsCid}
+                onChange={(e) => setIpfsCid(e.target.value)}
+                style={{ flex: 1 }}
+            />
+            <button className="primary-btn" onClick={() => handleDecryptRecord()} disabled={isDecrypting}>
+                {isDecrypting ? "Decrypting..." : "Fetch & Decrypt"}
+            </button>
         </div>
-      )}
+
+        {decryptedRecord && (
+            <div className="floating-card" style={{ marginTop: '2rem', borderColor: 'var(--medical-primary)' }}>
+                <h4 style={{ color: 'var(--medical-primary)', marginBottom: '1.5rem', display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                    <span>🔓</span> Decrypted Health Record
+                </h4>
+                <div style={{ display: 'grid', gridTemplateColumns: '140px 1fr', gap: '1.5rem', fontSize: '0.95rem' }}>
+                    <strong style={{ color: 'var(--text-muted)' }}>Patient ID:</strong> <span style={{ color: 'var(--medical-primary)', fontWeight: 'bold' }}>{decryptedRecord.patientWallet}</span>
+                    <strong style={{ color: 'var(--text-muted)' }}>Record Type:</strong> <span>{decryptedRecord.type}</span>
+                    <strong style={{ color: 'var(--text-muted)' }}>Clinical Data:</strong> <span style={{ lineHeight: '1.6' }}>{decryptedRecord.clinicalData}</span>
+                </div>
+            </div>
+        )}
+      </div>
+
+      <div className="dashboard-section glass-panel">
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
+              <div>
+                  <h3>Authorized Health Records</h3>
+                  <p style={{ fontSize: '0.9rem', color: 'var(--text-muted)' }}>Patient medical history authorized for your view.</p>
+              </div>
+          </div>
+          <div className="table-container">
+              <table className="data-table">
+                  <thead>
+                      <tr>
+                          <th>Record Type</th>
+                          <th>Status</th>
+                          <th>IPFS Hash</th>
+                          <th>Action</th>
+                      </tr>
+                  </thead>
+                  <tbody>
+                      {activeConsents.length === 0 ? (
+                          <tr><td colSpan="4" style={{ textAlign: 'center', padding: '3rem' }}>No records fetched or patient missing consent. Use the Access block above.</td></tr>
+                      ) : (
+                          activeConsents.map(c => (
+                              <tr key={c.id}>
+                                  <td>{c.type}</td>
+                                  <td><span className="status-badge active">{c.status}</span></td>
+                                  <td style={{ fontFamily: 'monospace', fontSize: '0.85em', color: 'var(--text-secondary)' }}>{c.cid.slice(0, 12)}...</td>
+                                  <td>
+                                      <button className="secondary-btn" onClick={() => {
+                                          setIpfsCid(c.cid);
+                                          handleDecryptRecord(c.cid, { wallet: c.patient });
+                                          window.scrollTo({ top: document.body.scrollHeight, behavior: 'smooth' });
+                                      }}>
+                                          Decrypt
+                                      </button>
+                                  </td>
+                              </tr>
+                          ))
+                      )}
+                  </tbody>
+              </table>
+          </div>
+      </div>
+
+            {showUploadForm && (
+                <div className="modal-overlay">
+                    <div className="glass-panel modal" style={{ maxWidth: '650px', width: '95%', padding: '2.5rem' }}>
+                        <div className="modal-header" style={{ borderBottom: '1px solid var(--glass-border)', paddingBottom: '1.5rem', marginBottom: '2rem' }}>
+                            <h2 style={{ color: 'var(--medical-primary)', fontWeight: '800' }}>📤 Secure Report Anchorage</h2>
+                            <button className="close-btn" onClick={() => setShowUploadForm(false)}>×</button>
+                        </div>
+                        <form onSubmit={handleUploadReport}>
+                            <div className="dashboard-grid" style={{ gridTemplateColumns: '1fr 1fr', gap: '1.5rem' }}>
+                                <div className="form-group">
+                                    <label style={{ color: 'var(--text-muted)', fontSize: '0.8rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Patient ID / Wallet</label>
+                                    <input
+                                        type="text"
+                                        className="glass-input"
+                                        value={uploadData.patientAddress}
+                                        onChange={(e) => setUploadData({ ...uploadData, patientAddress: e.target.value })}
+                                        placeholder="0x... or Short ID"
+                                        required
+                                    />
+                                </div>
+                                <div className="form-group">
+                                    <label style={{ color: 'var(--text-muted)', fontSize: '0.8rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Data Sensitivity</label>
+                                    <select className="glass-input" value={uploadData.sensitivity} onChange={e => setUploadData({ ...uploadData, sensitivity: e.target.value })}>
+                                        <option value="Low">🟢 Low (Routine)</option>
+                                        <option value="Medium">🟡 Medium (Specialized)</option>
+                                        <option value="High">🔴 High (Genetic/Sensitive)</option>
+                                    </select>
+                                </div>
+                            </div>
+                            
+                            <div className="form-group" style={{ marginTop: '1.5rem' }}>
+                                <label style={{ color: 'var(--text-muted)', fontSize: '0.8rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Authorized Doctor Name</label>
+                                <input
+                                    type="text"
+                                    className="glass-input"
+                                    value={uploadData.authorizedDoctor}
+                                    onChange={(e) => setUploadData({ ...uploadData, authorizedDoctor: e.target.value })}
+                                    placeholder="e.g. Dr. John Doe"
+                                    required
+                                />
+                            </div>
+
+                            <div className="dashboard-grid" style={{ gridTemplateColumns: '1fr 1fr', gap: '1.5rem', marginTop: '1rem' }}>
+                                <div className="form-group">
+                                    <label style={{ color: 'var(--text-muted)', fontSize: '0.8rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Registry Category</label>
+                                    <select
+                                        className="glass-input"
+                                        value={uploadData.category}
+                                        onChange={(e) => setUploadData({ ...uploadData, category: e.target.value, testType: '' })}
+                                        required
+                                    >
+                                        <option value="">Select category...</option>
+                                        {Object.keys(labTestRegistry).map(cat => (
+                                            <option key={cat} value={cat}>{cat}</option>
+                                        ))}
+                                    </select>
+                                </div>
+                                <div className="form-group">
+                                    <label style={{ color: 'var(--text-muted)', fontSize: '0.8rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Diagnostic Test Type</label>
+                                    <select
+                                        className="glass-input"
+                                        value={uploadData.testType}
+                                        onChange={(e) => setUploadData({ ...uploadData, testType: e.target.value })}
+                                        required
+                                        disabled={!uploadData.category}
+                                    >
+                                        <option value="">Select test type...</option>
+                                        {uploadData.category && labTestRegistry[uploadData.category].map(type => (
+                                            <option key={type} value={type}>{type}</option>
+                                        ))}
+                                    </select>
+                                </div>
+                            </div>
+
+                            <div className="form-group" style={{ marginTop: '1.5rem' }}>
+                                <label style={{ color: 'var(--text-muted)', fontSize: '0.8rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Clinical Summary & Findings</label>
+                                <textarea
+                                    className="glass-input"
+                                    value={uploadData.reportData}
+                                    onChange={(e) => setUploadData({ ...uploadData, reportData: e.target.value })}
+                                    placeholder="Enter structured diagnostic findings..."
+                                    rows="4"
+                                    required
+                                />
+                            </div>
+
+                            <div className="form-group" style={{ marginTop: '1.5rem' }}>
+                                <label style={{ color: 'var(--text-muted)', fontSize: '0.8rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Supporting Documentation</label>
+                                <div 
+                                    className="floating-card" 
+                                    style={{ 
+                                        padding: '2rem', 
+                                        textAlign: 'center', 
+                                        border: '2px dashed var(--glass-border)',
+                                        background: 'rgba(255,255,255,0.02)',
+                                        position: 'relative',
+                                        cursor: 'pointer'
+                                    }}
+                                >
+                                    <input
+                                        type="file"
+                                        accept=".pdf,.jpg,.png,.doc,.docx"
+                                        onChange={(e) => setSelectedFile(e.target.files[0])}
+                                        style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', opacity: 0, cursor: 'pointer' }}
+                                    />
+                                    <div style={{ fontSize: '2rem', marginBottom: '0.5rem' }}>📄</div>
+                                    <p style={{ margin: 0, fontSize: '0.9rem', color: 'var(--text-muted)' }}>
+                                        {selectedFile ? <span style={{ color: 'var(--medical-primary)', fontWeight: '700' }}>{selectedFile.name}</span> : "Click or drag to upload report document (PDF, JPG, DOC)"}
+                                    </p>
+                                </div>
+                            </div>
+
+                            <div className="modal-actions" style={{ marginTop: '2.5rem' }}>
+                                <button type="submit" className="primary-btn" disabled={loading} style={{ flex: 2 }}>
+                                    {loading ? "Anchoring on Chain..." : "🔒 Finalize & Anchor Report"}
+                                </button>
+                                <button type="button" className="secondary-btn" onClick={() => setShowUploadForm(false)} style={{ flex: 1 }}>
+                                    Abort
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            )}
+
+            {viewingReport && (
+                <div className="modal-overlay">
+                    <div className="glass-panel modal" style={{ maxWidth: '600px', width: '90%', padding: '2.5rem' }}>
+                        <div className="modal-header">
+                            <h3>On-Chain Report Metadata</h3>
+                            <button className="close-btn" onClick={() => setViewingReport(null)}>×</button>
+                        </div>
+                        <div className="floating-card" style={{ background: 'rgba(255,255,255,0.05)', marginTop: '1rem' }}>
+                            <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: '1rem' }}>
+                                <div style={{ padding: '1rem', borderBottom: '1px solid var(--glass-border)' }}>
+                                    <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)', textTransform: 'uppercase' }}>IPFS Content Identifier (CID)</span>
+                                    <p style={{ margin: '0.5rem 0', fontFamily: 'monospace', fontSize: '0.9rem', color: 'var(--medical-primary)', wordBreak: 'break-all' }}>{viewingReport.cid}</p>
+                                </div>
+                                <div style={{ padding: '1rem', borderBottom: '1px solid var(--glass-border)' }}>
+                                    <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)', textTransform: 'uppercase' }}>Patient Mapping</span>
+                                    <p style={{ margin: '0.5rem 0', fontFamily: 'monospace', fontSize: '1rem' }}>{viewingReport.patient}</p>
+                                </div>
+                                <div style={{ padding: '1rem' }}>
+                                    <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)', textTransform: 'uppercase' }}>Test Classification</span>
+                                    <p style={{ margin: '0.5rem 0', fontSize: '1.1rem', fontWeight: '700' }}>{viewingReport.type}</p>
+                                </div>
+                            </div>
+                        </div>
+                        <div className="modal-actions" style={{ marginTop: '2rem' }}>
+                            <button className="primary-btn" style={{ width: '100%' }} onClick={() => setViewingReport(null)}>Close View</button>
+                        </div>
+                    </div>
+                </div>
+            )}
 
       {showRequestModal && (
         <div className="modal-overlay">
@@ -496,6 +719,16 @@ const LabDashboard = ({
                   value={requestData.patientWallet}
                   onChange={(e) => setRequestData({ ...requestData, patientWallet: e.target.value })}
                   placeholder="0x... or Short ID"
+                  required
+                />
+              </div>
+              <div className="form-group">
+                <label>Requester Name / Lab ID *</label>
+                <input
+                  type="text"
+                  value={requestData.requesterName}
+                  onChange={(e) => setRequestData({ ...requestData, requesterName: e.target.value })}
+                  placeholder="e.g. City Diagnostic Center"
                   required
                 />
               </div>

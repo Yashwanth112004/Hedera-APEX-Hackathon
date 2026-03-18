@@ -10,10 +10,17 @@
   --medical-primary-dark: #0F766E;
   --medical-accent: #3B82F6;     /* Medical Blue */
   --medical-highlight: #2DD4BF;  /* Mint */
+  --medical-aqua: #06B6D4;       /* Cyan/Aqua */
   --background-soft: #F8FAFC;    /* Slate 50 */
   --text-main: #334155;          /* Slate 700 */
   --text-muted: #64748B;         /* Slate 500 */
+  --text-secondary: #64748B;     /* Slate 500 */
   --border-light: #E2E8F0;       /* Slate 200 */
+
+  /* Status Colors */
+  --status-approved: #10B981;    /* Emerald Green */
+  --status-pending: #F59E0B;     /* Amber */
+  --status-rejected: #EF4444;    /* Red */
 
   /* Gradients */
   --grad-teal: linear-gradient(135deg, #14B8A6, #0F766E);

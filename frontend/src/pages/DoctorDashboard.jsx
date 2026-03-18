@@ -235,8 +235,11 @@ const DoctorDashboard = ({
                 const readContract = medicalRecordsContract.connect(provider);
                 const records = await readContract.getPatientRecords(targetWallet);
 
-                // Map to UI
-                const formatted = records.map(r => ({
+                // IMPORTANT: Only show records that the doctor themselves uploaded.
+                // Lab-uploaded records should NOT automatically appear here.
+                const formatted = records
+                    .filter(r => r.provider.toLowerCase() === account.toLowerCase())
+                    .map(r => ({
                     id: r.id.toString(),
                     type: r.recordType,
                     status: "Authorized",

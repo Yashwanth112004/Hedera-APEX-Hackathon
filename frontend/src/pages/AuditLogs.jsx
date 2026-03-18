@@ -125,14 +125,14 @@ const AuditLogs = ({ auditLogContract, fiduciaryFilter }) => {
         <div className="table-container">
           <table className="data-table">
             <thead>
-              <tr>
-                <th>Log ID</th>
-                <th>Data Principal</th>
-                <th>Data Fiduciary</th>
-                <th>Action</th>
-                <th>Purpose</th>
-                <th>Time (UTC)</th>
-                <th>Ledger</th>
+              <tr style={{ background: '#F8FAFC' }}>
+                <th style={{ color: 'var(--text-main)', fontWeight: '700' }}>Log ID</th>
+                <th style={{ color: 'var(--text-main)', fontWeight: '700' }}>Data Principal</th>
+                <th style={{ color: 'var(--text-main)', fontWeight: '700' }}>Data Fiduciary</th>
+                <th style={{ color: 'var(--text-main)', fontWeight: '700' }}>Action</th>
+                <th style={{ color: 'var(--text-main)', fontWeight: '700' }}>Purpose</th>
+                <th style={{ color: 'var(--text-main)', fontWeight: '700' }}>Time (UTC)</th>
+                <th style={{ color: 'var(--text-main)', fontWeight: '700' }}>Ledger</th>
               </tr>
             </thead>
             <tbody>
@@ -143,16 +143,16 @@ const AuditLogs = ({ auditLogContract, fiduciaryFilter }) => {
               ) : (
                 filteredLogs.map((log) => (
                   <tr key={log.id}>
-                    <td><span style={{ fontWeight: '500' }}>#{log.id}</span></td>
-                    <td><code style={{ fontSize: '0.85rem' }}>{truncateAddress(log.patientAddress)}</code></td>
-                    <td><code style={{ fontSize: '0.85rem' }}>{truncateAddress(log.hospitalAddress)}</code></td>
+                    <td><span style={{ fontWeight: '600', color: 'var(--text-main)' }}>#{log.id}</span></td>
+                    <td><code style={{ fontSize: '0.85rem', background: '#F1F5F9', color: '#0F172A', padding: '0.2rem 0.4rem', borderRadius: '4px', border: '1px solid #CBD5E1' }}>{truncateAddress(log.patientAddress)}</code></td>
+                    <td><code style={{ fontSize: '0.85rem', background: '#F1F5F9', color: '#0F172A', padding: '0.2rem 0.4rem', borderRadius: '4px', border: '1px solid #CBD5E1' }}>{truncateAddress(log.hospitalAddress)}</code></td>
                     <td>
                       <span className="role-badge" style={{ background: getActionColor(log.action).includes('var') ? getActionColor(log.action) : 'var(--medical-primary)', fontSize: '0.75rem' }}>
                         {log.action}
                       </span>
                     </td>
-                    <td><span style={{ fontSize: '0.9rem' }}>{log.purpose}</span></td>
-                    <td><span style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>{formatDate(log.timestamp)}</span></td>
+                    <td><span style={{ fontSize: '0.9rem', color: 'var(--text-main)', fontWeight: '500' }}>{log.purpose}</span></td>
+                    <td><span style={{ fontSize: '0.85rem', color: 'var(--text-main)', fontWeight: '500' }}>{formatDate(log.timestamp)}</span></td>
                     <td style={{ color: 'var(--medical-primary)', fontWeight: 'bold', fontSize: '0.8rem' }}>✓ Hedera</td>
                   </tr>
                 ))

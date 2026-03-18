@@ -19,7 +19,8 @@ const PatientDashboard = ({
   isActingAsBeneficiary,
   consentContract, // Needed to fetch/approve requests directly
   medicalRecordsContract,
-  walletMapperContract
+  walletMapperContract,
+  rbacContract
 }) => {
   const [activeTab, setActiveTab] = useState('beneficiaries');
   const [highRequesterMap, setHighRequesterMap] = useState({});
@@ -55,6 +56,7 @@ const PatientDashboard = ({
   const [showDPDPNotice, setShowDPDPNotice] = useState(false);
   const [dpdpNoticeData, setDPDPNoticeData] = useState({ purpose: '', dataTypes: '' });
   const [pendingApprovalReq, setPendingApprovalReq] = useState(null);
+  const [isPharmacyRequest, setIsPharmacyRequest] = useState(false);
 
   const [nominee, setNominee] = useState({ name: '', wallet: '', relation: '' });
   const [showNomineeModal, setShowNomineeModal] = useState(false);
@@ -93,6 +95,24 @@ const PatientDashboard = ({
           const consentReadContract = consentContract.connect(provider);
           const requests = await getSafePendingRequests(consentReadContract, normalizedAccount, consentContract.target, provider);
           setPendingRequests(requests || []);
+
+          // Direct consent fetch as fallback diagnostic
+          // If the parent consents prop is empty, fetch directly and log
+          try {
+            const directConsents = await consentReadContract.getPatientConsents(normalizedAccount);
+            console.log("[PatientDashboard] Direct consent fetch for", normalizedAccount, ":", directConsents.length, "found");
+            if (directConsents.length > 0) {
+              console.log("[PatientDashboard] Consent entries:", directConsents.map((c, i) => ({
+                idx: i,
+                fiduciary: c.dataFiduciary,
+                isActive: c.isActive,
+                expiry: Number(c.expiry),
+                purpose: c.purpose
+              })));
+            }
+          } catch (directErr) {
+            console.warn("[PatientDashboard] Direct consent fetch failed:", directErr.message);
+          }
         } catch (err) {
           console.error("Could not fetch Pending Requests", err);
         }
@@ -256,8 +276,35 @@ const PatientDashboard = ({
     }
   };
 
-  const handleApproveRequest = (req) => {
+  const handleApproveRequest = async (req) => {
     if (!consentContract) return;
+
+    // Prefetch role for disclaimer logic (Pharmacy role = 4)
+    // 1. Immediate text-based detection (fast & robust for UI)
+    const p = req.purpose.toLowerCase();
+    let isPharmaText = p.includes('pharmacy') || 
+                       p.includes('medicine') || 
+                       p.includes('prescription') || 
+                       p.includes('dispense') || 
+                       p.includes('dispensation') || 
+                       p.includes('fulfillment') ||
+                       p.includes('rx') || 
+                       p.includes('chemist') || 
+                       p.includes('medication');
+    
+    setIsPharmacyRequest(isPharmaText);
+    console.log(`[Disclaimer-Debug] Initial text-check: ${isPharmaText} (Purpose: "${p}")`);
+
+    // 2. Authoritative on-chain Role Check (runs in background)
+    if (rbacContract) {
+      rbacContract.getRole(req.provider).then(roleId => {
+        const isPharmaRole = Number(roleId) === 4;
+        console.log(`[Disclaimer-Debug] On-chain role check: ${isPharmaRole} (RoleID: ${roleId})`);
+        if (isPharmaRole) setIsPharmacyRequest(true); // Don't override if text-check was already true
+      }).catch(e => {
+        console.warn("[Disclaimer-Debug] Role check error:", e);
+      });
+    }
 
     // DPDP SECTION 5 COMPLIANCE: Notice before consent
     setDPDPNoticeData({
@@ -281,11 +328,17 @@ const PatientDashboard = ({
     setSelectedRequestScope(req.purpose);
     setShowDPDPNotice(false);
 
-    if (allCids.length > 0) {
+    // Modal is now always shown for Pharmacy (to see disclaimer) 
+    // or if the patient actually has records to link.
+
+    if (allCids.length > 0 || isPharmacyRequest) {
       setShowSelectionModal(true);
       setSelectedCids([]);
     } else {
-      executeApproval(req.id, []);
+      // For non-pharmacy with 0 records, skip the link modal but ask if they still want to show the modal
+      // User said "it didn't ask", so let's just always show the modal if they have 0 records but it's a request.
+      setShowSelectionModal(true);
+      setSelectedCids([]);
     }
   };
 
@@ -1061,61 +1114,96 @@ const PatientDashboard = ({
               <p style={{ marginBottom: '1.5rem', color: 'var(--text-secondary)', fontSize: '0.9rem' }}>
                 Select the records you want the provider to see immediately upon your approval.
               </p>
+
+              {isPharmacyRequest && (
+                <p style={{ 
+                  color: '#EF4444', 
+                  fontWeight: 'bold', 
+                  marginBottom: '1.5rem', 
+                  padding: '1rem', 
+                  background: '#FEF2F2', 
+                  border: '1px solid #FCA5A5',
+                  borderRadius: '12px',
+                  fontSize: '0.9rem',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '0.75rem'
+                }}>
+                  <span style={{ fontSize: '1.2rem' }}>⚠️</span>
+                  Disclaimer: This request is from a Pharmacy. You do not need to link any health records for medication fulfillment.
+                </p>
+              )}
               <div style={{ maxHeight: '300px', overflowY: 'auto', marginBottom: '1.5rem', display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
-                {[
-                  ...myRecords.map(r => ({ cid: r.cid, type: r.recordType, cat: 'Record' })),
-                  ...myPrescriptions.map(p => ({ cid: p.cid, type: 'Prescription', cat: 'Prescription' }))
-                ].map((item, idx) => {
-                  const isSelected = selectedCids.includes(item.cid);
-                  return (
-                    <div
-                      key={idx}
-                      className={`glass-panel ${isSelected ? 'active-gradient' : ''}`}
-                      style={{
-                        padding: '1rem',
-                        cursor: 'pointer',
-                        border: isSelected ? '1px solid var(--medical-primary)' : '1px solid var(--glass-border)',
-                        display: 'flex',
-                        flexDirection: 'column',
-                        gap: '0.5rem'
-                      }}
-                      onClick={() => {
-                        setSelectedCids(prev =>
-                          prev.includes(item.cid) ? prev.filter(c => c !== item.cid) : [...prev, item.cid]
-                        );
-                      }}
-                    >
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-                          <span style={{ fontSize: '1.1rem' }}>{item.cat === 'Prescription' ? '💊' : '📄'}</span>
-                          <div style={{ display: 'flex', flexDirection: 'column' }}>
-                            <span style={{ fontSize: '0.9rem', fontWeight: 'bold' }}>{item.type}</span>
-                            <span style={{ fontSize: '0.7rem', color: 'var(--text-secondary)' }}>Content Hash: {item.cid.slice(0, 8)}...</span>
+                {(() => {
+                  const items = [
+                    ...myRecords.map(r => ({ cid: r.cid, type: r.recordType, cat: 'Record' })),
+                    ...myPrescriptions.map(p => ({ cid: p.cid, type: 'Prescription', cat: 'Prescription' }))
+                  ];
+
+                  if (items.length === 0) {
+                    return (
+                      <div style={{ padding: '2.5rem 1rem', textAlign: 'center', background: 'rgba(255,255,255,0.02)', borderRadius: '12px', border: '1px dashed var(--glass-border)' }}>
+                        <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>
+                          You have no digitized health records available to link.
+                        </p>
+                        <p style={{ color: 'var(--text-muted)', fontSize: '0.75rem', marginTop: '0.5rem' }}>
+                          You can still proceed with approval to grant access to the requested scope.
+                        </p>
+                      </div>
+                    );
+                  }
+
+                  return items.map((item, idx) => {
+                    const isSelected = selectedCids.includes(item.cid);
+                    return (
+                      <div
+                        key={idx}
+                        className={`glass-panel ${isSelected ? 'active-gradient' : ''}`}
+                        style={{
+                          padding: '1rem',
+                          cursor: 'pointer',
+                          border: isSelected ? '1px solid var(--medical-primary)' : '1px solid var(--glass-border)',
+                          display: 'flex',
+                          flexDirection: 'column',
+                          gap: '0.5rem'
+                        }}
+                        onClick={() => {
+                          setSelectedCids(prev =>
+                            prev.includes(item.cid) ? prev.filter(c => c !== item.cid) : [...prev, item.cid]
+                          );
+                        }}
+                      >
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                            <span style={{ fontSize: '1.1rem' }}>{item.cat === 'Prescription' ? '💊' : '📄'}</span>
+                            <div style={{ display: 'flex', flexDirection: 'column' }}>
+                              <span style={{ fontSize: '0.9rem', fontWeight: 'bold' }}>{item.type}</span>
+                              <span style={{ fontSize: '0.7rem', color: 'var(--text-secondary)' }}>Content Hash: {item.cid.slice(0, 8)}...</span>
+                            </div>
+                          </div>
+                          <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+                            <button
+                              className="secondary-btn"
+                              style={{ padding: '0.2rem 0.5rem', fontSize: '0.7rem' }}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleDecryptRecord(item.cid);
+                              }}
+                            >
+                              👁️ Preview
+                            </button>
+                            <input type="checkbox" checked={isSelected} readOnly />
                           </div>
                         </div>
-                        <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
-                          <button
-                            className="secondary-btn"
-                            style={{ padding: '0.2rem 0.5rem', fontSize: '0.7rem' }}
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              handleDecryptRecord(item.cid);
-                            }}
-                          >
-                            👁️ Preview
-                          </button>
-                          <input type="checkbox" checked={isSelected} readOnly />
+                        <div style={{ display: 'flex', gap: '0.5rem' }}>
+                          <span style={{ fontSize: '0.6rem', padding: '0.1rem 0.4rem', borderRadius: '4px', background: 'var(--medical-primary)20', color: 'var(--medical-primary)' }}>
+                            TAG: {item.cat.toUpperCase()}
+                          </span>
                         </div>
                       </div>
-                      <div style={{ display: 'flex', gap: '0.5rem' }}>
-                        <span style={{ fontSize: '0.6rem', padding: '0.1rem 0.4rem', borderRadius: '4px', background: 'var(--medical-primary)20', color: 'var(--medical-primary)' }}>
-                          TAG: {item.cat.toUpperCase()}
-                        </span>
-                        {/* Sensitivity indicator would go here if fetched from IPFS cache */}
-                      </div>
-                    </div>
-                  );
-                })}
+                    );
+                  });
+                })()}
               </div>
               <div className="modal-actions">
                 <button
@@ -1214,17 +1302,17 @@ const PatientDashboard = ({
               <button className="close-btn" onClick={() => setShowAuditLogs(false)}>×</button>
             </div>
             <div className="modal-body">
-              <p style={{ color: 'var(--text-muted)', marginBottom: '1.5rem', fontSize: '0.9rem' }}>
+              <p style={{ color: 'var(--text-main)', marginBottom: '1.5rem', fontSize: '0.95rem', fontWeight: '500' }}>
                 Every action affecting your personal data is recorded on the Hedera blockchain for absolute transparency (DPDP 2023 Compliance).
               </p>
               <div className="table-container" style={{ maxHeight: '400px', overflowY: 'auto' }}>
                 <table className="data-table">
                   <thead>
-                    <tr>
-                      <th>Action</th>
-                      <th>Fiduciary</th>
-                      <th>Purpose / Detail</th>
-                      <th>Timestamp</th>
+                    <tr style={{ background: '#F8FAFC' }}>
+                      <th style={{ color: 'var(--text-main)', fontWeight: '700' }}>Action</th>
+                      <th style={{ color: 'var(--text-main)', fontWeight: '700' }}>Fiduciary</th>
+                      <th style={{ color: 'var(--text-main)', fontWeight: '700' }}>Purpose / Detail</th>
+                      <th style={{ color: 'var(--text-main)', fontWeight: '700' }}>Timestamp</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -1235,9 +1323,9 @@ const PatientDashboard = ({
                             {log.action}
                           </span>
                         </td>
-                        <td>{log.dataFiduciary === ethers.ZeroAddress ? 'System' : `${log.dataFiduciary.slice(0, 8)}...`}</td>
-                        <td>{log.purpose}</td>
-                        <td style={{ fontSize: '0.8rem' }}>{new Date(Number(log.timestamp) * 1000).toLocaleString()}</td>
+                        <td>{log.dataFiduciary === ethers.ZeroAddress ? <span style={{color: 'var(--medical-primary)', fontWeight: 'bold'}}>System</span> : <code style={{background: '#f1f5f9', padding: '2px 6px', borderRadius: '4px', border: '1px solid #cbd5e1', color: '#0f172a'}}>{log.dataFiduciary.slice(0, 8)}...</code>}</td>
+                        <td style={{ fontWeight: '500', color: 'var(--text-main)' }}>{log.purpose}</td>
+                        <td style={{ fontSize: '0.8rem', color: 'var(--text-main)', fontWeight: '600' }}>{new Date(Number(log.timestamp) * 1000).toLocaleString()}</td>
                       </tr>
                     ))}
                   </tbody>
