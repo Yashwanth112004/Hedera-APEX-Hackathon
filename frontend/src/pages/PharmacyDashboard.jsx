@@ -4,7 +4,14 @@ import { ethers } from 'ethers';
 import { fetchFromPinata, decryptData } from '../utils/ipfsHelper';
 import { getSafePatientConsents } from '../utils/consentHelper';
 
-const PharmacyDashboard = ({ account, consentContract, auditLogContract, accessContract, medicalRecordsContract }) => {
+const PharmacyDashboard = ({ 
+    account, 
+    consentContract, 
+    auditLogContract, 
+    accessContract, 
+    medicalRecordsContract,
+    walletMapperContract 
+}) => {
     const [prescriptions, setPrescriptions] = useState([]);
     const [linkedRecords, setLinkedRecords] = useState([]);
     const [loading, setLoading] = useState(false);
@@ -12,6 +19,7 @@ const PharmacyDashboard = ({ account, consentContract, auditLogContract, accessC
     const [decryptedRx, setDecryptedRx] = useState(null);
     const [dispensedId, setDispensedId] = useState(null);
     const [ipfsCid, setIpfsCid] = useState(''); // Added for manual/linked decryption
+    const [searchTerm, setSearchTerm] = useState('');
 
     const fetchPrescriptions = async () => {
         if (!medicalRecordsContract || !consentContract || !account) return;
@@ -25,7 +33,17 @@ const PharmacyDashboard = ({ account, consentContract, auditLogContract, accessC
 
                 const formatted = await Promise.all(rawQueue.map(async (rx) => {
                     let authorized = false;
+                    let patientShortId = "N/A";
                     const activeLinked = [];
+
+                    // Fetch Short ID if mapper available
+                    if (walletMapperContract) {
+                        try {
+                            const sid = await walletMapperContract.getShortIDFromWallet(rx.patient);
+                            if (sid && sid !== "") patientShortId = sid;
+                        } catch (e) { console.warn("Short ID fetch failed", e); }
+                    }
+
                     try {
                         const patientConsents = await getSafePatientConsents(readConsent, rx.patient, consentContract.target, provider);
                     patientConsents.forEach(c => {
@@ -53,6 +71,7 @@ const PharmacyDashboard = ({ account, consentContract, auditLogContract, accessC
                     id: rx.recordId.toString(),
                     patient: rx.patient,
                     patientName: rx.patientName,
+                    patientShortId,
                     cid: rx.cid,
                     status: 'Pending',
                     isAuthorized: authorized,
@@ -138,10 +157,38 @@ const PharmacyDashboard = ({ account, consentContract, auditLogContract, accessC
 
     return (
         <div className="dashboard animate-fade-in">
-            <div className="dashboard-header">
+            <div className="dashboard-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2.5rem' }}>
                 <div>
-                    <h2>Pharmacist Portal</h2>
-                    <p style={{ color: 'var(--text-muted)' }}>Secure medication fulfillment with cryptographically verified prescriptions.</p>
+                    <h2 style={{ fontSize: '2.2rem', fontWeight: '800', color: 'var(--medical-primary)', marginBottom: '0.4rem' }}>Pharmacist Portal</h2>
+                    <p style={{ color: 'var(--text-muted)', fontSize: '1rem' }}>Secure medication fulfillment with cryptographically verified prescriptions.</p>
+                </div>
+                <div className="search-container glass-panel" style={{ 
+                    padding: '0.6rem 1.2rem', 
+                    display: 'flex', 
+                    alignItems: 'center', 
+                    gap: '1rem', 
+                    background: 'white', 
+                    minWidth: '400px', 
+                    border: '2px solid var(--medical-primary)',
+                    boxShadow: 'var(--shadow-md)',
+                    borderRadius: 'var(--radius-md)'
+                }}>
+                    <span style={{ fontSize: '1.2rem', color: 'var(--medical-primary)' }}>🔍</span>
+                    <input 
+                        type="text" 
+                        placeholder="Search prescriptions..." 
+                        value={searchTerm}
+                        onChange={(e) => setSearchTerm(e.target.value)}
+                        style={{
+                            background: 'transparent',
+                            border: 'none',
+                            color: 'var(--text-main)',
+                            width: '100%',
+                            outline: 'none',
+                            fontSize: '1rem',
+                            fontWeight: '500'
+                        }}
+                    />
                 </div>
             </div>
 
@@ -175,18 +222,30 @@ const PharmacyDashboard = ({ account, consentContract, auditLogContract, accessC
                         <thead>
                             <tr>
                                 <th>Patient Identity</th>
+                                <th>Short ID</th>
                                 <th>Wallet Address</th>
                                 <th>Linked Records</th>
                                 <th>Action</th>
                             </tr>
                         </thead>
                         <tbody>
-                            {prescriptions.length === 0 ? (
-                                <tr><td colSpan="4" style={{ textAlign: 'center', padding: '3rem' }}>No active prescriptions in the queue.</td></tr>
-                            ) : (
-                                prescriptions.map(px => (
+                            {(() => {
+                                const filtered = prescriptions.filter(px => {
+                                    const search = searchTerm.toLowerCase().trim();
+                                    if (!search) return true;
+                                    return (px.patientName?.toLowerCase().includes(search)) || 
+                                           (px.patientShortId?.toLowerCase().includes(search)) ||
+                                           (px.patient?.toLowerCase().includes(search));
+                                });
+
+                                if (filtered.length === 0) {
+                                    return <tr><td colSpan="5" style={{ textAlign: 'center', padding: '3rem', color: 'var(--text-muted)' }}>No prescriptions found matching your search.</td></tr>;
+                                }
+
+                                return filtered.map(px => (
                                     <tr key={px.id}>
                                         <td><strong>{px.patientName}</strong></td>
+                                        <td><span className="status-badge active" style={{ fontSize: '0.75rem', padding: '2px 10px' }}>{px.patientShortId}</span></td>
                                         <td style={{ fontFamily: 'monospace', fontSize: '0.85em', color: 'var(--text-muted)' }}>{px.patient.slice(0, 8)}...</td>
                                         <td>
                                             {px.linked.length > 0 ? (
@@ -211,8 +270,8 @@ const PharmacyDashboard = ({ account, consentContract, auditLogContract, accessC
                                             </div>
                                         </td>
                                     </tr>
-                                ))
-                            )}
+                                ));
+                            })()}
                         </tbody>
                     </table>
                 </div>

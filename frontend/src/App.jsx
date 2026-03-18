@@ -28,6 +28,7 @@ const CONSENT_MANAGER = "0x931a878562F3c7f3D6B9Ff27f0ce01e1Cb0F4470";
 const ACCESS_MANAGER = "0x62BC569E5047E6f77C3ECA6C056C9337E39bd1BD";
 const MEDICAL_RECORDS = "0xCefd7626F25DE944C314F7E4047a44DD54c31581";
 const RBAC_CONTRACT_ADDRESS = "0x0b11e9AA48bf573A8E9d1D5085b71d8c58de9968";
+const HARDCODED_ADMIN = "0x04Fee3FD1B338d12FFD6dBD8d66dE1e8e0BB99cB";
 
 /* ABIs */
 const consentABI = [
@@ -68,7 +69,7 @@ const roleABI = [
   "function getRole(address user) view returns (uint8)",
   "function registerRole(address user, uint8 role)",
   "function updateRole(address user, uint8 role)",
-  "function isAdmin(address wallet) view returns (bool)"
+  "function isAdmin(address user) view returns (bool)"
 ];
 
 const auditLogABI = [
@@ -91,7 +92,6 @@ const mapRole = (roleId) => {
     case 4: return "Pharmacy";
     case 5: return "Insurance";
     case 6: return "Auditor";
-    case 7: return "Admin";
     default: return "Patient";
   }
 };
@@ -179,21 +179,10 @@ function App() {
           rolesToSelect.push(stringRole);
         }
 
-        // 2. Check admin status
-        try {
-          const isSystemAdmin = await roleContract.isAdmin(safeWallet);
-          if (isSystemAdmin && !rolesToSelect.includes("Admin")) {
-            rolesToSelect.push("Admin");
-          } else if (!isSystemAdmin) {
-            // Check legacy admin status
-            const legacyRBAC = "0xc285Cba71f206fd6AB83514D82Dd389Fe0584919";
-            const legacyContract = new ethers.Contract(legacyRBAC, roleABI, provider);
-            const isLegacyAdmin = await legacyContract.isAdmin(safeWallet);
-            if (isLegacyAdmin && !rolesToSelect.includes("Admin")) {
-              rolesToSelect.push("Admin");
-            }
-          }
-        } catch (e) { }
+        const isAdminWallet = safeWallet.toLowerCase() === HARDCODED_ADMIN.toLowerCase();
+        if (isAdminWallet && !rolesToSelect.includes("Admin")) {
+          rolesToSelect.push("Admin");
+        }
 
       } catch (roleError) {
         console.warn("Failed to fetch roles, defaulting to Patient", roleError);
@@ -225,11 +214,10 @@ function App() {
       // Fix: Normalize address to checksum to prevent isAdmin lookup failures
       const safeWallet = ethers.getAddress(wallet);
 
-      const roleContract = new ethers.Contract(RBAC_CONTRACT_ADDRESS, roleABI, provider);
-      const isSystemAdmin = await roleContract.isAdmin(safeWallet);
+      const isAdminWallet = safeWallet.toLowerCase() === HARDCODED_ADMIN.toLowerCase();
 
-      if (!isSystemAdmin) {
-        toast.error("Access Denied: Wallet is not a registered administrator");
+      if (!isAdminWallet) {
+        toast.error("Access Denied: Only the authorized Super Admin wallet can access this portal");
         return;
       }
 

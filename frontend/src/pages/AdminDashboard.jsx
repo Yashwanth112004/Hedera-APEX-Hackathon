@@ -4,16 +4,17 @@ import { toast } from "react-toastify";
 
 // Use the provided Role Based Smart Contract Address
 const RBAC_ADDRESS = "0x0b11e9AA48bf573A8E9d1D5085b71d8c58de9968";
+const LEGACY_RBAC = "0xc285Cba71f206fd6AB83514D82Dd389Fe0584919";
+const HARDCODED_ADMIN = "0x04Fee3FD1B338d12FFD6dBD8d66dE1e8e0BB99cB";
 
 const roleABI = [
   "function registerRole(address user, uint8 role)",
   "function updateRole(address user, uint8 role)",
   "function getRole(address user) view returns (uint8)",
-  "event RoleAssigned(address indexed user, uint8 role)",
-  "event RoleUpdated(address indexed user, uint8 role)"
+  "function isAdmin(address user) view returns (bool)"
 ];
 
-export default function AdminDashboard() {
+export default function AdminDashboard({ account }) {
 
   const [pendingRequests, setPendingRequests] = useState([]);
   const [activeRoles, setActiveRoles] = useState([]);
@@ -56,6 +57,7 @@ export default function AdminDashboard() {
 
       setActiveRoles(active);
 
+      setActiveRoles(active);
     } catch (err) {
       console.error("Error loading admin data", err);
       const localReqs = JSON.parse(localStorage.getItem('dpdp_role_requests') || '[]');
@@ -90,8 +92,19 @@ export default function AdminDashboard() {
 
       toast.info(`Mapping ${req.orgName} to role ${getRoleName(req.roleId)}...`);
 
-      const tx = await contract.registerRole(safeWallet, Number(req.roleId), { gasLimit: 1000000 });
-      await tx.wait();
+      let tx;
+      try {
+        console.log("Attempting mapping on Primary RBAC:", RBAC_ADDRESS);
+        tx = await contract.registerRole(safeWallet, Number(req.roleId), { gasLimit: 1000000 });
+        await tx.wait();
+      } catch (primaryErr) {
+        console.warn("Primary RBAC failed (or reverted), attempting LEGACY fallback...", primaryErr.message);
+        if (primaryErr.message.toLowerCase().includes("user rejected")) throw primaryErr;
+        
+        const legacyContract = new ethers.Contract(LEGACY_RBAC, roleABI, signer);
+        tx = await legacyContract.registerRole(safeWallet, Number(req.roleId), { gasLimit: 1000000 });
+        await tx.wait();
+      }
 
       const localReqs = JSON.parse(localStorage.getItem('dpdp_role_requests') || '[]');
       const updatedReqs = localReqs.map(r =>
@@ -101,13 +114,18 @@ export default function AdminDashboard() {
       );
       localStorage.setItem('dpdp_role_requests', JSON.stringify(updatedReqs));
 
-      toast.success("Role successfully mapped on record");
+      toast.success("Role successfully mapped on blockchain");
       loadData();
     } catch (err) {
-      console.error(err);
-      toast.error("Mapping failed: " + (err.reason || err.message));
+      console.error("Mapping failed:", err);
+      const reason = err.reason || err.message || "Unknown contract error";
+      toast.error(`Mapping failed: ${reason}`);
+      
+      if (reason.toLowerCase().includes("reverted") || reason.toLowerCase().includes("only admin") || err.code === "CALL_EXCEPTION") {
+        toast.warning("AUTHORIZATION ERROR: Your wallet is not a registered Admin on the blockchain yet.", { autoClose: 15000 });
+      }
     }
-  };
+};
 
   const revokeRole = async (wallet) => {
     try {
@@ -115,14 +133,23 @@ export default function AdminDashboard() {
       const signer = await provider.getSigner();
       const contract = new ethers.Contract(RBAC_ADDRESS, roleABI, signer);
 
-      const tx = await contract.updateRole(wallet, 0, { gasLimit: 1000000 });
-      await tx.wait();
+      let tx;
+      try {
+        tx = await contract.updateRole(wallet, 0, { gasLimit: 1000000 });
+        await tx.wait();
+      } catch (err) {
+        console.warn("Primary revoke failed, trying legacy...");
+        const legacyContract = new ethers.Contract(LEGACY_RBAC, roleABI, signer);
+        tx = await legacyContract.updateRole(wallet, 0, { gasLimit: 1000000 });
+        await tx.wait();
+      }
 
       toast.success("Identity permissions revoked");
       loadData();
     } catch (err) {
-      console.error(err);
-      toast.error("Revoke failed");
+      console.error("Revoke failed:", err);
+      const reason = err.reason || err.message || "Unknown contract error";
+      toast.error(`Revoke failed: ${reason}`);
     }
   };
 
