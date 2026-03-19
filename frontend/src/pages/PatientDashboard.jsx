@@ -69,6 +69,8 @@ const PatientDashboard = ({
   const [renewDuration, setRenewDuration] = useState('86400');
   const [selectedRequestId, setSelectedRequestId] = useState(null);
   const [selectedRequestScope, setSelectedRequestScope] = useState('');
+  const [showClaimModal, setShowClaimModal] = useState(false);
+  const [claimTarget, setClaimTarget] = useState({ provider: '', cid: '', amount: '' });
 
   // Fetch On-Chain Data
   React.useEffect(() => {
@@ -903,6 +905,7 @@ const PatientDashboard = ({
                     cid: r.cid,
                     recordType: r.recordType,
                     timestamp: r.timestamp,
+                    billAmount: r.billAmount,
                     category: 'Record'
                   })),
                   ...myPrescriptions.map(p => ({
@@ -911,6 +914,7 @@ const PatientDashboard = ({
                     patientName: p.patientName,
                     cid: p.cid,
                     recordType: 'Prescription',
+                    billAmount: p.billAmount,
                     category: 'Prescription'
                   }))
                 ].sort((a, b) => Number(b.timestamp || 0) - Number(a.timestamp || 0)).map((item, i) => (
@@ -946,14 +950,28 @@ const PatientDashboard = ({
                       </span>
                     </td>
                     <td>
-                      <button
-                        className="primary-btn"
-                        style={{ padding: '0.4rem 0.8rem', fontSize: '0.8rem' }}
-                        onClick={() => handleDecryptRecord(item.cid)}
-                        disabled={isDecrypting && ipfsCid === item.cid}
-                      >
-                        {isDecrypting && ipfsCid === item.cid ? "..." : "🔓 Decrypt"}
-                      </button>
+                      <div style={{ display: 'flex', gap: '0.4rem' }}>
+                        <button
+                          className="primary-btn"
+                          style={{ padding: '0.4rem 0.8rem', fontSize: '0.8rem' }}
+                          onClick={() => handleDecryptRecord(item.cid)}
+                          disabled={isDecrypting && ipfsCid === item.cid}
+                        >
+                          {isDecrypting && ipfsCid === item.cid ? "..." : "🔓 View"}
+                        </button>
+                        {item.billAmount && Number(item.billAmount) > 0 && (
+                          <button
+                            className="secondary-btn"
+                            style={{ padding: '0.4rem 0.8rem', fontSize: '0.8rem', background: 'var(--medical-aqua)', color: 'white', border: 'none' }}
+                            onClick={() => {
+                              setClaimTarget({ provider: '', cid: item.cid, amount: item.billAmount.toString() });
+                              setShowClaimModal(true);
+                            }}
+                          >
+                            🏥 Claim (₹{item.billAmount.toString()})
+                          </button>
+                        )}
+                      </div>
                     </td>
                   </tr>
                 ))}
@@ -1409,6 +1427,64 @@ const PatientDashboard = ({
               <div className="modal-actions">
                 <button className="primary-btn" onClick={() => { toast.success("Nominee Registered on Ledger"); setShowNomineeModal(false); }}>Register Nominee</button>
                 <button className="secondary-btn" onClick={() => setShowNomineeModal(false)}>Cancel</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+      {showClaimModal && (
+        <div className="modal-overlay">
+          <div className="modal">
+            <div className="modal-header">
+              <h3>File Insurance Claim</h3>
+              <button className="close-btn" onClick={() => setShowClaimModal(false)}>×</button>
+            </div>
+            <div className="modal-body">
+              <div className="alert-info" style={{ background: 'var(--medical-primary)10', padding: '1rem', borderRadius: '8px', marginBottom: '1.5rem', fontSize: '0.85rem' }}>
+                This will proactively grant access to the selected record (Bill: ₹{claimTarget.amount}) to your insurance provider.
+              </div>
+              <div className="form-group">
+                <label>Insurance Provider (Wallet or Short ID) *</label>
+                <input 
+                  type="text" 
+                  className="glass-input" 
+                  placeholder="e.g. INS123 or 0x..." 
+                  value={claimTarget.provider}
+                  onChange={e => setClaimTarget({ ...claimTarget, provider: e.target.value })}
+                  required 
+                />
+              </div>
+              <div className="form-group">
+                <label>Policy Number (Optional)</label>
+                <input type="text" className="glass-input" placeholder="e.g. POL-9988" />
+              </div>
+              <div className="modal-actions">
+                <button 
+                  className="primary-btn" 
+                  disabled={!claimTarget.provider}
+                  onClick={async () => {
+                    try {
+                      toast.info("Authorizing Insurance Access...");
+                      const { resolveWalletAddress } = await import('../utils/idMappingHelper');
+                      const insuranceWallet = await resolveWalletAddress(claimTarget.provider, walletMapperContract);
+                      
+                      // Proactively grant consent for this specific record (CID)
+                      await onGrantConsent(
+                        insuranceWallet, 
+                        `Insurance Claim Filing for CID ${claimTarget.cid.slice(0,8)}`, 
+                        claimTarget.cid, 
+                        86400 * 30 // 30 days
+                      );
+                      
+                      setShowClaimModal(false);
+                      toast.success("Access granted to Insurance Provider!");
+                    } catch (err) {
+                      toast.error("Failed to grant access: " + err.message);
+                    }
+                  }}
+                >
+                  Confirm & Send Access
+                </button>
               </div>
             </div>
           </div>

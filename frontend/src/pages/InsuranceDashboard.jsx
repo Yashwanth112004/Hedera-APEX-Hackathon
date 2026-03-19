@@ -4,11 +4,12 @@ import { ethers } from 'ethers';
 import { resolveWalletAddress } from '../utils/idMappingHelper';
 import { getSafePatientConsents } from '../utils/consentHelper';
 import { fetchFromPinata, decryptData } from '../utils/ipfsHelper';
+import { generateLocalShortID, normalizeAddress } from '../utils/idMappingHelper';
 
 const InsuranceDashboard = ({ account, consentContract, auditLogContract, accessContract, medicalRecordsContract, walletMapperContract }) => {
     const [activeSubTab, setActiveSubTab] = useState('overview');
     const [loading, setLoading] = useState(false);
-    
+
     // Form States
     const [requestForm, setRequestForm] = useState({
         patientId: '',
@@ -21,11 +22,23 @@ const InsuranceDashboard = ({ account, consentContract, auditLogContract, access
     // Data States
     const [allRequests, setAllRequests] = useState([]);
     const [approvedRecords, setApprovedRecords] = useState([]);
-    const [claims, setClaims] = useState([]);
+    const [claims, setClaims] = useState(() => {
+        const saved = localStorage.getItem(`insurance_claims_${account}`);
+        return saved ? JSON.parse(saved) : [];
+    });
     const [accessLogs, setAccessLogs] = useState([]);
     const [decryptedRecord, setDecryptedRecord] = useState(null);
     const [showClaimModal, setShowClaimModal] = useState(false);
     const [selectedRecordForClaim, setSelectedRecordForClaim] = useState(null);
+    const [shortId, setShortId] = useState('');
+    const [isRegisteringId, setIsRegisteringId] = useState(false);
+    const [claimData, setClaimData] = useState({
+        patientWallet: '',
+        policyNumber: '',
+        amount: '',
+        diagnosis: '',
+        hospital: ''
+    });
 
     const dataOptions = [
         { id: 'lab', label: 'Lab Reports' },
@@ -59,21 +72,13 @@ const InsuranceDashboard = ({ account, consentContract, auditLogContract, access
                 console.warn("Audit log fetch error", logsErr);
             }
 
-            // 2. Fetch Requests from BACKEND (Fulfillment of "store in backend")
-            let backendRequests = [];
-            try {
-                const response = await fetch(`http://localhost:5001/api/insurance/requests?fiduciary=${account}`);
-                backendRequests = await response.json();
-            } catch (beErr) {
-                console.warn("Backend unavailable, falling back to ledger events", beErr);
-            }
-
-            // 3. Fetch Requests from LEDGER (Events)
+            // 2. Fetch Requests from LEDGER (Events)
             let ledgerRequests = [];
             try {
                 const filter = readAudit.filters.AccessRequested(null, account);
                 const events = await readAudit.queryFilter(filter, -10000);
                 ledgerRequests = events.map((ev, idx) => ({
+                    id: idx,
                     patient: ev.args[0],
                     purpose: ev.args[2],
                     timestamp: Number(ev.args[3]),
@@ -84,54 +89,105 @@ const InsuranceDashboard = ({ account, consentContract, auditLogContract, access
                 console.warn("Ledger event sync error", evErr);
             }
 
-            // Merge: Unique requests by patient/purpose
-            const merged = [...backendRequests];
-            ledgerRequests.forEach(lr => {
-                if (!merged.find(br => br.patient.toLowerCase() === lr.patient.toLowerCase() && br.purpose === lr.purpose)) {
-                    merged.push(lr);
-                }
-            });
-            setAllRequests(merged.reverse());
+            setAllRequests(ledgerRequests.reverse());
 
-            // 4. Fetch Active Consents (Medical Records)
+            // 3. Fetch Active Consents (Medical Records)
             try {
                 const patientsToTry = new Set([
-                    ...merged.map(r => r.patient?.toLowerCase() || r.patientId?.toLowerCase()), 
+                    ...ledgerRequests.map(r => r.patient?.toLowerCase() || r.patientId?.toLowerCase()),
                     ...accessLogs.map(l => l.principal.toLowerCase())
                 ]);
-                
+
                 const records = [];
                 for (const p of patientsToTry) {
                     if (!p) continue;
-                    const cons = await getSafePatientConsents(consentContract, p, consentContract.target, provider);
-                    cons.forEach(c => {
-                        if (c.dataFiduciary.toLowerCase() === account.toLowerCase() && c.isActive && Number(c.expiry) > Date.now() / 1000) {
-                            if (c.dataHash) {
-                                const cids = c.dataHash.split(',');
-                                cids.forEach(cid => {
-                                    if (cid.trim()) {
-                                        records.push({
-                                            patient: p,
-                                            purpose: c.purpose,
-                                            cid: cid.trim(),
-                                            expiry: c.expiry,
-                                            scope: c.dataScope
-                                        });
-                                    }
-                                });
+                    try {
+                        const cons = await getSafePatientConsents(consentContract, p, consentContract.target, provider);
+                        
+                        // Fetch the actual records from the contract to get bill amounts
+                        let patientRecords = [];
+                        if (medicalRecordsContract) {
+                            try {
+                                const medRead = medicalRecordsContract.connect(provider);
+                                patientRecords = await medRead.getPatientRecords(p);
+                            } catch (e) {
+                                console.warn(`Could not fetch records for ${p}:`, e.message);
                             }
                         }
-                    });
+
+                        cons.forEach(c => {
+                            if (c.dataFiduciary.toLowerCase() === account.toLowerCase() && c.isActive && Number(c.expiry) > Date.now() / 1000) {
+                                if (c.dataHash) {
+                                    const cids = c.dataHash.split(',');
+                                    cids.forEach(cid => {
+                                        const trimmedCid = cid.trim();
+                                        if (trimmedCid) {
+                                            // Match with patientRecords to find billAmount
+                                            const match = patientRecords.find(pr => pr.cid === trimmedCid);
+                                            records.push({
+                                                patient: p,
+                                                purpose: c.purpose,
+                                                cid: trimmedCid,
+                                                expiry: c.expiry,
+                                                scope: c.dataScope,
+                                                billAmount: match ? match.billAmount : 0
+                                            });
+                                        }
+                                    });
+                                }
+                            }
+                        });
+                    } catch (syncErr) {
+                        console.warn(`Sync failed for patient ${p}:`, syncErr.message);
+                    }
                 }
                 setApprovedRecords(records);
+
+                // --- AUTO-SYNCHRONIZE INCOMING CLAIMS ---
+                // If a patient granted consent with "Insurance Claim Filing" in the purpose,
+                // auto-detect it as a "Claim" if not already tracked.
+                const newAutoClaims = [];
+                records.forEach(r => {
+                    const p = (r.purpose || "").toLowerCase();
+                    if (p.includes('insurance claim filing')) {
+                        // Check if we already have this claim tracked (by CID)
+                        const exists = claims.find(c => c.cid === r.cid);
+                        if (!exists) {
+                            newAutoClaims.push({
+                                id: `AUTO-${r.cid.slice(0, 8)}-${Date.now() % 10000}`,
+                                patient: r.patient,
+                                cid: r.cid,
+                                status: 'Incoming Request',
+                                amount: r.billAmount ? r.billAmount.toString() : '0',
+                                time: new Date().toLocaleString()
+                            });
+                        }
+                    }
+                });
+
+                if (newAutoClaims.length > 0) {
+                    const updated = [...newAutoClaims, ...claims];
+                    setClaims(updated);
+                    localStorage.setItem(`insurance_claims_${account}`, JSON.stringify(updated));
+                    toast.info(`Detected ${newAutoClaims.length} new incoming claim(s)!`);
+                }
             } catch (consErr) {
-                console.warn("Consent sync failed", consErr);
+                console.warn("Global consent sync failed", consErr);
             }
 
         } catch (err) {
             console.error("Dashboard sync error", err);
         } finally {
             setLoading(false);
+        }
+
+        if (walletMapperContract && account) {
+            try {
+                const id = await walletMapperContract.getShortIDFromWallet(normalizeAddress(account));
+                if (id) setShortId(id);
+            } catch (e) {
+                console.warn("Could not fetch Insurance Short ID");
+            }
         }
     };
 
@@ -142,7 +198,7 @@ const InsuranceDashboard = ({ account, consentContract, auditLogContract, access
     const handleToggleDataType = (id) => {
         setRequestForm(prev => ({
             ...prev,
-            dataTypes: prev.dataTypes.includes(id) 
+            dataTypes: prev.dataTypes.includes(id)
                 ? prev.dataTypes.filter(t => t !== id)
                 : [...prev.dataTypes, id]
         }));
@@ -158,40 +214,22 @@ const InsuranceDashboard = ({ account, consentContract, auditLogContract, access
         setLoading(true);
         try {
             const patientAddress = await resolveWalletAddress(requestForm.patientId, walletMapperContract);
-            
+
             toast.info("Logging DPDP Access Request to Hedera Audit...");
             // Step 1: Explicitly Log Request to AuditLog for transparency
             const nowSecs = Math.floor(Date.now() / 1000);
             const scopeString = `Scope: ${requestForm.dataTypes.join(', ')} | Duration: ${requestForm.durationValue} ${requestForm.durationUnit}`;
             const fullPurpose = `[INSURANCE] ${requestForm.purpose} (${scopeString})`;
-            
+
             const logTx = await auditLogContract.logAccessRequested(patientAddress, account, fullPurpose, nowSecs, { gasLimit: 1000000 });
             await logTx.wait();
 
-            toast.info("Updating Backend Records...");
-            // Step 2: Fulfillment of "store in backend" requirement
-            try {
-                await fetch('http://localhost:5001/api/insurance/requests', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        patient: patientAddress,
-                        patientId: requestForm.patientId,
-                        purpose: fullPurpose,
-                        fiduciary: account,
-                        scope: requestForm.dataTypes
-                    })
-                });
-            } catch (beErr) {
-                console.warn("Backend persistent storage unreachable", beErr);
-            }
-
             toast.info("Registering Request with Consent Manager...");
-            // Step 3: Formal request for patient to act upon
+            // Step 2: Formal request for patient to act upon
             const reqTx = await consentContract.requestAccess(patientAddress, fullPurpose, { gasLimit: 1000000 });
             await reqTx.wait();
-            
-            toast.success("Request fully registered, logged, and stored in backend.");
+
+            toast.success("Request fully registered and logged on Hedera ledger.");
             setRequestForm({ patientId: '', dataTypes: [], purpose: '', durationValue: '24', durationUnit: 'hours' });
             setActiveSubTab('requests');
             fetchInsuranceData();
@@ -216,11 +254,86 @@ const InsuranceDashboard = ({ account, consentContract, auditLogContract, access
             time: new Date().toLocaleString()
         };
 
-        setClaims(prev => [newClaim, ...prev]);
+        const updated = [newClaim, ...claims];
+        setClaims(updated);
+        localStorage.setItem(`insurance_claims_${account}`, JSON.stringify(updated));
         setShowClaimModal(false);
         setSelectedRecordForClaim(null);
         setActiveSubTab('claims');
         toast.success("Insurance Claim registered and linked to clinical CID.");
+    };
+
+    const handleRegisterShortID = async () => {
+        if (!walletMapperContract || !account) return;
+        const normalizedAccount = normalizeAddress(account);
+
+        try {
+            setIsRegisteringId(true);
+            const generatedId = generateLocalShortID(normalizedAccount);
+            toast.info(`Registering Corporate ID: ${generatedId}...`);
+            
+            const tx = await walletMapperContract.registerShortID(generatedId, { gasLimit: 800000 });
+            await tx.wait();
+
+            setShortId(generatedId);
+            toast.success(`Insurance ID '${generatedId}' is now active!`);
+        } catch (err) {
+            const errMsg = err.message || "";
+            if (errMsg.includes("already has a Short ID")) {
+                const id = await walletMapperContract.getShortIDFromWallet(normalizedAccount);
+                if (id) setShortId(id);
+                toast.warning("Account already registered.");
+            } else {
+                toast.error("Registration failed: " + errMsg);
+            }
+        } finally {
+            setIsRegisteringId(false);
+        }
+    };
+
+    const handleDisburseClaim = async (claim) => {
+        if (!account || !claim) return;
+        
+        try {
+            setLoading(true);
+            toast.info(`Resolving patient wallet for ${claim.patient}...`);
+            
+            // 1. Resolve Wallet Address (Handle both raw addresses and Short IDs)
+            const patientWallet = await resolveWalletAddress(claim.patient, walletMapperContract);
+            
+            // 2. Execute HBAR Transfer (Claim Amount)
+            // Note: For demo purposes, we treat INR as tiny bars or just a multiplier
+            // User requested "reflected in patient wallet"
+            const provider = new ethers.BrowserProvider(window.ethereum);
+            const signer = await provider.getSigner();
+            
+            // Let's send a small amount of HBAR proportional to the claim (e.g. 1 HBAR per 1000 INR for demo)
+            const hbarAmount = (Number(claim.amount) / 1000).toFixed(4);
+            
+            toast.info(`Disbursing ${hbarAmount} HBAR to ${patientWallet.slice(0, 10)}...`);
+            
+            const tx = await signer.sendTransaction({
+                to: patientWallet,
+                value: ethers.parseEther(hbarAmount.toString()),
+                gasLimit: 100000
+            });
+            
+            await tx.wait();
+            
+            // 3. Update Status
+            const updated = claims.map(c => 
+                c.id === claim.id ? { ...c, status: 'Disbursed' } : c
+            );
+            setClaims(updated);
+            localStorage.setItem(`insurance_claims_${account}`, JSON.stringify(updated));
+            
+            toast.success("Funds dispersed! Transaction anchored on Hedera.");
+        } catch (err) {
+            console.error("Disbursement Failed", err);
+            toast.error("Disbursement Failed: " + (err.reason || err.message));
+        } finally {
+            setLoading(false);
+        }
     };
 
     const renderTabContent = () => {
@@ -256,7 +369,7 @@ const InsuranceDashboard = ({ account, consentContract, auditLogContract, access
                             <h3>Insurer Code of Conduct (DPDP)</h3>
                             <div className="floating-card" style={{ borderLeft: '4px solid var(--medical-primary)', marginTop: '1.5rem' }}>
                                 <p style={{ color: 'var(--text-muted)', lineHeight: '1.7' }}>
-                                    As a Data Fiduciary, all data access via this portal must strictly adhere to the <strong>Purpose Limitation</strong> and <strong>Data Minimization</strong> principles. 
+                                    As a Data Fiduciary, all data access via this portal must strictly adhere to the <strong>Purpose Limitation</strong> and <strong>Data Minimization</strong> principles.
                                     Every access event is irreversibly recorded on the Hedera ledger and is subject to patient oversight at any time.
                                 </p>
                             </div>
@@ -270,13 +383,13 @@ const InsuranceDashboard = ({ account, consentContract, auditLogContract, access
                         <h2 style={{ marginBottom: '2rem' }}>Initiate Data Access Request</h2>
                         <form onSubmit={submitConsentRequest}>
                             <div className="form-group">
-                                <label>Patient Short ID (e.g. 1234-ABCD)</label>
-                                <input 
-                                    type="text" 
-                                    className="glass-input" 
+                                <label>Patient Short ID (e.g. 123-ABC)</label>
+                                <input
+                                    type="text"
+                                    className="glass-input"
                                     placeholder="Enter verified Patient ID"
                                     value={requestForm.patientId}
-                                    onChange={(e) => setRequestForm({...requestForm, patientId: e.target.value})}
+                                    onChange={(e) => setRequestForm({ ...requestForm, patientId: e.target.value })}
                                 />
                             </div>
 
@@ -284,7 +397,7 @@ const InsuranceDashboard = ({ account, consentContract, auditLogContract, access
                                 <label>Required Data Types</label>
                                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginTop: '0.5rem' }}>
                                     {dataOptions.map(opt => (
-                                        <div 
+                                        <div
                                             key={opt.id}
                                             onClick={() => handleToggleDataType(opt.id)}
                                             style={{
@@ -308,31 +421,31 @@ const InsuranceDashboard = ({ account, consentContract, auditLogContract, access
 
                             <div className="form-group">
                                 <label>Purpose of Access (DPDP Requirement)</label>
-                                <textarea 
-                                    className="glass-input" 
-                                    rows="3" 
+                                <textarea
+                                    className="glass-input"
+                                    rows="3"
                                     placeholder="e.g. Health Insurance Claim Processing for Incident #INS-904"
                                     value={requestForm.purpose}
-                                    onChange={(e) => setRequestForm({...requestForm, purpose: e.target.value})}
+                                    onChange={(e) => setRequestForm({ ...requestForm, purpose: e.target.value })}
                                 />
                             </div>
 
                             <div className="form-group" style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: '1rem' }}>
                                 <div>
                                     <label>Access Duration</label>
-                                    <input 
-                                        type="number" 
-                                        className="glass-input" 
+                                    <input
+                                        type="number"
+                                        className="glass-input"
                                         value={requestForm.durationValue}
-                                        onChange={(e) => setRequestForm({...requestForm, durationValue: e.target.value})}
+                                        onChange={(e) => setRequestForm({ ...requestForm, durationValue: e.target.value })}
                                     />
                                 </div>
                                 <div>
                                     <label>Unit</label>
-                                    <select 
+                                    <select
                                         className="glass-input"
                                         value={requestForm.durationUnit}
-                                        onChange={(e) => setRequestForm({...requestForm, durationUnit: e.target.value})}
+                                        onChange={(e) => setRequestForm({ ...requestForm, durationUnit: e.target.value })}
                                     >
                                         <option value="hours">Hours</option>
                                         <option value="days">Days</option>
@@ -389,7 +502,7 @@ const InsuranceDashboard = ({ account, consentContract, auditLogContract, access
                         <div className="glass-panel" style={{ marginBottom: '2rem' }}>
                             <h3>Authorized Clinical Evidence</h3>
                             <p style={{ color: 'var(--text-muted)', marginBottom: '1.5rem' }}>Only records with active patient consent are visible here. Access is purpose-restricted.</p>
-                            
+
                             {approvedRecords.length === 0 ? (
                                 <div style={{ textAlign: 'center', padding: '3rem', color: 'var(--text-muted)' }}>
                                     No authorized records found. Ensure patients have approved your requests.
@@ -406,15 +519,22 @@ const InsuranceDashboard = ({ account, consentContract, auditLogContract, access
                                                 <span className="status-badge active">Approved</span>
                                             </div>
                                             <div style={{ fontSize: '0.9rem', color: 'var(--text-main)', background: '#F8FAFC', padding: '10px', borderRadius: '8px', marginBottom: '1rem' }}>
-                                                <strong>Approved Purpose:</strong><br/>
+                                                <strong>Approved Purpose:</strong><br />
                                                 <span style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>{r.purpose}</span>
                                             </div>
+                                            
+                                            {r.billAmount && Number(r.billAmount) > 0 && (
+                                                <div style={{ padding: '0.8rem', background: 'var(--grad-teal)', borderRadius: '12px', color: 'white', marginBottom: '1rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                                    <span style={{ fontSize: '0.8rem', fontWeight: 'bold' }}>BILL AMOUNT</span>
+                                                    <span style={{ fontSize: '1.1rem', fontWeight: '900' }}>₹{r.billAmount.toString()}</span>
+                                                </div>
+                                            )}
                                             <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginBottom: '1rem' }}>
                                                 Expires: {new Date(Number(r.expiry) * 1000).toLocaleString()}
                                             </div>
                                             <div style={{ display: 'flex', gap: '0.5rem' }}>
-                                                <button 
-                                                    className="primary-btn" 
+                                                <button
+                                                    className="primary-btn"
                                                     style={{ flex: 1, fontSize: '0.85rem' }}
                                                     onClick={async () => {
                                                         try {
@@ -422,11 +542,11 @@ const InsuranceDashboard = ({ account, consentContract, auditLogContract, access
                                                             const cipherText = await fetchFromPinata(r.cid);
                                                             const raw = decryptData(cipherText);
                                                             setDecryptedRecord({ ...raw, cid: r.cid, patient: r.patient });
-                                                            
+
                                                             // LOG ACCESS ON-CHAIN
                                                             if (auditLogContract) {
                                                                 const nowSecs = Math.floor(Date.now() / 1000);
-                                                                await auditLogContract.logDataAccessed(r.patient, account, `Insurance Review of CID ${r.cid.slice(0,8)}`, nowSecs, { gasLimit: 1000000 });
+                                                                await auditLogContract.logDataAccessed(r.patient, account, `Insurance Review of CID ${r.cid.slice(0, 8)}`, nowSecs, { gasLimit: 1000000 });
                                                             }
                                                             toast.success("Record Decrypted & Access Logged");
                                                         } catch (e) {
@@ -436,11 +556,18 @@ const InsuranceDashboard = ({ account, consentContract, auditLogContract, access
                                                 >
                                                     🔓 View Data
                                                 </button>
-                                                <button 
-                                                    className="secondary-btn" 
+                                                <button
+                                                    className="secondary-btn"
                                                     style={{ flex: 1, fontSize: '0.85rem' }}
                                                     onClick={() => {
                                                         setSelectedRecordForClaim(r);
+                                                        setClaimData({
+                                                          patientWallet: r.patient,
+                                                          policyNumber: '',
+                                                          amount: r.billAmount ? r.billAmount.toString() : '',
+                                                          diagnosis: r.purpose || '',
+                                                          hospital: account
+                                                        });
                                                         setShowClaimModal(true);
                                                     }}
                                                 >
@@ -489,15 +616,31 @@ const InsuranceDashboard = ({ account, consentContract, auditLogContract, access
                                 </thead>
                                 <tbody>
                                     {claims.length === 0 ? (
-                                        <tr><td colSpan="5" style={{ textAlign: 'center', padding: '3rem', color: 'var(--text-muted)' }}>No claims filed yet.</td></tr>
+                                        <tr><td colSpan="6" style={{ textAlign: 'center', padding: '3rem', color: 'var(--text-muted)' }}>No claims filed yet.</td></tr>
                                     ) : (
                                         claims.map(c => (
                                             <tr key={c.id}>
                                                 <td>#{c.id}</td>
                                                 <td style={{ fontFamily: 'monospace' }}>{c.patient.slice(0, 16)}...</td>
                                                 <td style={{ fontFamily: 'monospace', fontSize: '0.8rem' }}>{c.cid.slice(0, 16)}...</td>
-                                                <td><span className="status-badge pending">{c.status}</span></td>
+                                                <td>
+                                                    <span className={`status-badge ${c.status === 'Disbursed' ? 'success' : 'pending'}`}>
+                                                        {c.status}
+                                                    </span>
+                                                </td>
                                                 <td style={{ fontWeight: 'bold' }}>₹ {c.amount}</td>
+                                                <td>
+                                                    {c.status !== 'Disbursed' && (
+                                                        <button 
+                                                            className="primary-btn" 
+                                                            style={{ padding: '0.3rem 0.6rem', fontSize: '0.7rem', background: 'var(--grad-teal)' }}
+                                                            onClick={() => handleDisburseClaim(c)}
+                                                            disabled={loading}
+                                                        >
+                                                            {loading ? "..." : "Disburse Funds"}
+                                                        </button>
+                                                    )}
+                                                </td>
                                             </tr>
                                         ))
                                     )}
@@ -552,16 +695,33 @@ const InsuranceDashboard = ({ account, consentContract, auditLogContract, access
                     <h1 style={{ fontSize: '2.5rem', fontWeight: '800', color: 'var(--medical-primary)', marginBottom: '0.5rem', letterSpacing: '-0.02em' }}>
                         Insurance Governance
                     </h1>
+                </div>
+                <div style={{ textAlign: 'right' }}>
                     <p style={{ color: 'var(--text-muted)', fontSize: '1.1rem' }}>DPDP-compliant fiduciary gateway for clinical data verification.</p>
+                    {shortId ? (
+                        <div style={{ marginTop: '0.5rem', display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: '0.5rem' }}>
+                            <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>Insurance ID:</span>
+                            <span className="status-badge active" style={{ fontSize: '0.8rem' }}>{shortId}</span>
+                        </div>
+                    ) : (
+                        <button 
+                            className="secondary-btn" 
+                            style={{ marginTop: '0.5rem', fontSize: '0.75rem', padding: '0.3rem 0.8rem', borderColor: 'var(--medical-primary)' }}
+                            onClick={handleRegisterShortID}
+                            disabled={isRegisteringId}
+                        >
+                            {isRegisteringId ? "Registering..." : "📋 Register Corporate Short ID"}
+                        </button>
+                    )}
                 </div>
                 <div style={{ display: 'flex', gap: '0.5rem', marginTop: '1rem', background: 'rgba(255,255,255,0.05)', padding: '0.5rem', borderRadius: '12px', border: '1px solid var(--glass-border)' }}>
                     {['overview', 'request', 'requests', 'records', 'claims', 'logs'].map(tab => (
-                        <button 
+                        <button
                             key={tab}
                             onClick={() => setActiveSubTab(tab)}
                             className={activeSubTab === tab ? 'primary-btn' : 'secondary-btn'}
-                            style={{ 
-                                padding: '0.5rem 1rem', 
+                            style={{
+                                padding: '0.5rem 1rem',
                                 fontSize: '0.85rem',
                                 border: 'none',
                                 background: activeSubTab === tab ? 'var(--medical-primary)' : 'transparent',
@@ -583,10 +743,10 @@ const InsuranceDashboard = ({ account, consentContract, auditLogContract, access
                         </div>
                         <form onSubmit={handleCreateClaim}>
                             <p style={{ fontSize: '0.9rem', color: 'var(--text-muted)' }}>
-                                Linking claim to verified clinical evidence:<br/>
+                                Linking claim to verified clinical evidence:<br />
                                 <strong style={{ color: 'var(--medical-primary)' }}>{selectedRecordForClaim.cid.slice(0, 20)}...</strong>
                             </p>
-                            
+
                             <div className="form-group" style={{ marginTop: '1.5rem' }}>
                                 <label>Patient Wallet / ID</label>
                                 <input type="text" className="glass-input" value={selectedRecordForClaim.patient} readOnly />

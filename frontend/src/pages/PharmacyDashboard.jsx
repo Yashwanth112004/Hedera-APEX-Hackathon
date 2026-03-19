@@ -16,6 +16,7 @@ const PharmacyDashboard = ({
     const [linkedRecords, setLinkedRecords] = useState([]);
     const [loading, setLoading] = useState(false);
     const [isDispensing, setIsDispensing] = useState(false);
+    const [billingAmount, setBillingAmount] = useState('');
     const [decryptedRx, setDecryptedRx] = useState(null);
     const [dispensedId, setDispensedId] = useState(null);
     const [ipfsCid, setIpfsCid] = useState(''); // Added for manual/linked decryption
@@ -23,6 +24,11 @@ const PharmacyDashboard = ({
     const [recentlyRequested, setRecentlyRequested] = useState({}); // Tracking session-based requests
 
     const fetchPrescriptions = async () => {
+        console.log("[Pharmacy] Fetching prescriptions from ledger...");
+        if (!medicalRecordsContract) console.warn("[Pharmacy] medicalRecordsContract is null");
+        if (!consentContract) console.warn("[Pharmacy] consentContract is null");
+        if (!account) console.warn("[Pharmacy] account is null");
+        
         if (!medicalRecordsContract || !consentContract || !account) return;
         setLoading(true);
         try {
@@ -30,7 +36,9 @@ const PharmacyDashboard = ({
             const readMedical = medicalRecordsContract.connect(provider);
                 const readConsent = consentContract.connect(provider);
 
+                console.log("[Pharmacy] Calling getPendingPrescriptions...");
                 const rawQueue = await readMedical.getPendingPrescriptions();
+                console.log(`[Pharmacy] Found ${rawQueue.length} items in queue`);
 
                 const formatted = (await Promise.all(rawQueue.map(async (rx) => {
                     if (rx.isDispensed) return null; // Filter out dispensed ones at source
@@ -50,7 +58,16 @@ const PharmacyDashboard = ({
                     try {
                         const patientConsents = await getSafePatientConsents(readConsent, rx.patient, consentContract.target, provider);
                         patientConsents.forEach(c => {
-                            if (c.dataFiduciary.toLowerCase() === account.toLowerCase() && c.isActive && Number(c.expiry) > Math.floor(Date.now() / 1000)) {
+                            const p = (c.purpose || "").toLowerCase();
+                            const isPharmaPurpose = p.includes('medication') || 
+                                                 p.includes('dispensation') || 
+                                                 p.includes('prescription') || 
+                                                 p.includes('pharmacy');
+
+                            if (c.dataFiduciary.toLowerCase() === account.toLowerCase() && 
+                                c.isActive && 
+                                isPharmaPurpose && 
+                                Number(c.expiry) > Math.floor(Date.now() / 1000)) {
                                 authorized = true;
                                 if (c.dataHash) {
                                     const cids = c.dataHash.split(',');
@@ -98,7 +115,14 @@ const PharmacyDashboard = ({
 
     useEffect(() => {
         fetchPrescriptions();
-    }, [medicalRecordsContract]);
+        
+        // Auto-refresh every 12 seconds to catch on-chain approvals without manual sync
+        const interval = setInterval(() => {
+            if (!loading) fetchPrescriptions();
+        }, 12000);
+        
+        return () => clearInterval(interval);
+    }, [medicalRecordsContract, consentContract, account]);
 
     const requestAccess = async (wallet) => {
         if (!consentContract) return;
@@ -135,26 +159,33 @@ const PharmacyDashboard = ({
     };
 
     const handleDispense = async () => {
-        if (!decryptedRx) return;
+        if (!decryptedRx || !billingAmount) {
+            toast.error("Please enter the bill amount before dispensing.");
+            return;
+        }
         setIsDispensing(true);
         try {
             toast.info("Marking prescription as Dispensed On-Chain...");
-            const tx = await medicalRecordsContract.markPrescriptionDispensed(decryptedRx.recordId, { gasLimit: 1000000 });
+            // Pass billingAmount to the contract
+            const tx = await medicalRecordsContract.markPrescriptionDispensed(decryptedRx.recordId, Number(billingAmount), { gasLimit: 1000000 });
             await tx.wait();
 
             if (auditLogContract) {
                 const nowSecs = Math.floor(Date.now() / 1000);
-                await auditLogContract.logDataAccessed(decryptedRx.patientWallet, account, "Medication Dispensation", nowSecs, { gasLimit: 1000000 });
+                await auditLogContract.logDataAccessed(decryptedRx.patientWallet, account, `Medication Dispensation (Amt: ${billingAmount})`, nowSecs, { gasLimit: 1000000 });
             }
 
             setDispensedId(decryptedRx.recordId);
-            toast.success(`Medicines Dispensed. Transaction secured on-chain.`);
+            toast.success(`Medicines Dispensed. Bill of ${billingAmount} secured on-chain.`);
 
             // Clean up view
             setDecryptedRx(null);
+            setBillingAmount('');
             fetchPrescriptions(); // Refresh queue
         } catch (err) {
-            toast.error("Dispensation failed on-chain.");
+            console.error("Dispensation failed on-chain:", err);
+            const reason = err.reason || err.message || "Unknown error";
+            toast.error(`Dispensation failed: ${reason.slice(0, 60)}${reason.length > 60 ? '...' : ''}`);
         } finally {
             setIsDispensing(false);
         }
@@ -272,23 +303,20 @@ const PharmacyDashboard = ({
                                                     const patientKey = px.patient.toLowerCase();
                                                     const hasSessionIntent = recentlyRequested[patientKey] === true;
                                                     
-                                                    // Debug log to trace why the button might be bypassing correctly
-                                                    if (px.isAuthorized && !hasSessionIntent) {
-                                                        console.log(`[Pharmacy Flow] Patient: ${px.patientName}, Authorized: Yes, Session Intent: No -> SHOWING REQUEST ACCESS`);
-                                                    }
-
-                                                    if (px.isAuthorized && hasSessionIntent) {
-                                                        return (
-                                                            <button className="primary-btn" onClick={() => decryptPrescription(px)} style={{ padding: '0.4rem 0.8rem', fontSize: '0.8rem' }}>
-                                                                🔓 Decrypt RX
-                                                            </button>
-                                                        );
-                                                    } else if (hasSessionIntent) {
-                                                        return (
-                                                            <button className="secondary-btn" disabled style={{ padding: '0.4rem 0.8rem', fontSize: '0.8rem', opacity: 0.6 }}>
-                                                                Request Sent
-                                                            </button>
-                                                        );
+                                                    if (hasSessionIntent) {
+                                                        if (px.isAuthorized) {
+                                                            return (
+                                                                <button className="primary-btn" onClick={() => decryptPrescription(px)} style={{ padding: '0.4rem 0.8rem', fontSize: '0.8rem' }}>
+                                                                    🔓 Decrypt RX
+                                                                </button>
+                                                            );
+                                                        } else {
+                                                            return (
+                                                                <button className="secondary-btn" disabled style={{ padding: '0.4rem 0.8rem', fontSize: '0.8rem', opacity: 0.6, cursor: 'not-allowed' }}>
+                                                                    ⏳ Waiting for Approval
+                                                                </button>
+                                                            );
+                                                        }
                                                     } else {
                                                         return (
                                                             <button className="secondary-btn" onClick={() => requestAccess(px.patient)} style={{ padding: '0.4rem 0.8rem', fontSize: '0.8rem' }}>
@@ -339,9 +367,13 @@ const PharmacyDashboard = ({
                                                     🔓 View
                                                 </button>
                                             ) : (
-                                                <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', fontStyle: 'italic' }}>
-                                                    Session intent required (Use Global Queue)
-                                                </span>
+                                                <button 
+                                                    className="secondary-btn" 
+                                                    style={{ padding: '0.4rem 0.8rem', fontSize: '0.8rem' }}
+                                                    onClick={() => requestAccess(r.patientWallet)}
+                                                >
+                                                    Start Session
+                                                </button>
                                             )}
                                         </td>
                                     </tr>
@@ -375,10 +407,22 @@ const PharmacyDashboard = ({
                         </div>
                     </div>
 
-                    <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '1rem' }}>
-                        <button className="secondary-btn" onClick={() => setDecryptedRx(null)}>Close View</button>
-                        <button className="primary-btn" onClick={handleDispense} disabled={isDispensing}>
-                            {isDispensing ? "Processing..." : "Mark as Dispensed"}
+                    <div style={{ marginTop: '2rem', padding: '1.5rem', background: 'rgba(20,184,166,0.05)', borderRadius: '12px', border: '1px dashed var(--medical-primary)' }}>
+                        <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: 'bold', color: 'var(--medical-primary)' }}>Pharmacy Bill Amount (INR)</label>
+                        <input 
+                            type="number" 
+                            className="glass-input" 
+                            placeholder="e.g. 1500" 
+                            value={billingAmount}
+                            onChange={(e) => setBillingAmount(e.target.value)}
+                            style={{ background: 'white' }}
+                        />
+                    </div>
+
+                    <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '1rem', marginTop: '2rem' }}>
+                        <button className="secondary-btn" onClick={() => { setDecryptedRx(null); setBillingAmount(''); }}>Close View</button>
+                        <button className="primary-btn" onClick={handleDispense} disabled={isDispensing || !billingAmount}>
+                            {isDispensing ? "Processing..." : "Confirm & Dispense"}
                         </button>
                     </div>
                 </div>

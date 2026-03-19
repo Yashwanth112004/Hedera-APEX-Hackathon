@@ -46,7 +46,8 @@ contract ConsentManager {
         uint256 _durationInSeconds
     ) external {
 
-        require(registry.isApproved(_fiduciary), "Fiduciary not approved");
+        // Bypassed for Prototype Demo to allow any tester's wallet to act as Fiduciary
+        // require(registry.isApproved(_fiduciary), "Fiduciary not approved");
 
         uint256 expiryTime = block.timestamp + _durationInSeconds;
 

@@ -12,6 +12,7 @@ contract MedicalRecords {
         string cid;       // IPFS Hash
         string recordType; // e.g., "Lab Report", "Prescription"
         uint256 timestamp;
+        uint256 billAmount; // Fee or fulfillment cost
     }
 
     struct PrescriptionQueueItem {
@@ -20,6 +21,7 @@ contract MedicalRecords {
         string patientName;
         string cid;
         bool isDispensed;
+        uint256 billAmount;
     }
 
     PrescriptionQueueItem[] public prescriptionQueue;
@@ -47,7 +49,8 @@ contract MedicalRecords {
     );
 
     event PrescriptionDispensed(
-        uint256 indexed recordId
+        uint256 indexed recordId,
+        uint256 billAmount
     );
 
     constructor(address _registry, address _audit) {
@@ -72,7 +75,8 @@ contract MedicalRecords {
             provider: msg.sender,
             cid: _cid,
             recordType: _recordType,
-            timestamp: block.timestamp
+            timestamp: block.timestamp,
+            billAmount: 0
         }));
 
         // Log this action to the global audit trail
@@ -95,7 +99,19 @@ contract MedicalRecords {
             patient: _patient,
             patientName: _patientName,
             cid: _cid,
-            isDispensed: false
+            isDispensed: false,
+            billAmount: 0
+        }));
+
+        // ADDED: Also add to the patient's record history so it's visible in insurance/patient portal
+        patientRecords[_patient].push(Record({
+            id: recordCounter,
+            patient: _patient,
+            provider: msg.sender,
+            cid: _cid,
+            recordType: "Prescription",
+            timestamp: block.timestamp,
+            billAmount: 0
         }));
 
         audit.logDataAccessed(_patient, msg.sender, "Uploaded new Prescription to Global Queue", block.timestamp);
@@ -121,11 +137,22 @@ contract MedicalRecords {
         return pending;
     }
 
-    function markPrescriptionDispensed(uint256 _recordId) external {
+    function markPrescriptionDispensed(uint256 _recordId, uint256 _billAmount) external {
         for (uint256 i = 0; i < prescriptionQueue.length; i++) {
             if (prescriptionQueue[i].recordId == _recordId) {
                 prescriptionQueue[i].isDispensed = true;
-                emit PrescriptionDispensed(_recordId);
+                prescriptionQueue[i].billAmount = _billAmount;
+                
+                // Update the patient's record history with the bill amount
+                address patient = prescriptionQueue[i].patient;
+                for (uint256 j = 0; j < patientRecords[patient].length; j++) {
+                    if (patientRecords[patient][j].id == _recordId) {
+                        patientRecords[patient][j].billAmount = _billAmount;
+                        break;
+                    }
+                }
+                
+                emit PrescriptionDispensed(_recordId, _billAmount);
                 break;
             }
         }

@@ -24,9 +24,9 @@ import LegalCompliance from "./pages/LegalCompliance";
 /* CONTRACT ADDRESSES */
 const AUDIT_LOG = "0x92d2eCE8bB295b7806A900Fad7CA26Fd55814976";
 const REGISTRY = "0x155Af6ECaFb48861dA7d16Fb8Af2f6ce9d6DD779";
-const CONSENT_MANAGER = "0x931a878562F3c7f3D6B9Ff27f0ce01e1Cb0F4470";
+const CONSENT_MANAGER = "0xA750aB299a7E778759B1d11EE6e7Bec09f056694";
 const ACCESS_MANAGER = "0x62BC569E5047E6f77C3ECA6C056C9337E39bd1BD";
-const MEDICAL_RECORDS = "0xCefd7626F25DE944C314F7E4047a44DD54c31581";
+const MEDICAL_RECORDS = "0x008053a72017ef79D87beFFA6aB1ec0E835fB282";
 const RBAC_CONTRACT_ADDRESS = "0x0b11e9AA48bf573A8E9d1D5085b71d8c58de9968";
 const HARDCODED_ADMIN = "0x04Fee3FD1B338d12FFD6dBD8d66dE1e8e0BB99cB";
 
@@ -49,10 +49,10 @@ const consentABIOld = [
 
 const medicalRecordsABI = [
   "function addRecord(address,string,string)",
-  "function getPatientRecords(address) view returns (tuple(uint256 id,address patient,address provider,string cid,string recordType,uint256 timestamp)[])",
+  "function getPatientRecords(address) view returns (tuple(uint256 id,address patient,address provider,string cid,string recordType,uint256 timestamp,uint256 billAmount)[])",
   "function addPrescription(address patient, string patientName, string cid)",
-  "function getPendingPrescriptions() view returns (tuple(uint256 recordId,address patient,string patientName,string cid,bool isDispensed)[])",
-  "function markPrescriptionDispensed(uint256 recordId)"
+  "function getPendingPrescriptions() view returns (tuple(uint256 recordId,address patient,string patientName,string cid,bool isDispensed,uint256 billAmount)[])",
+  "function markPrescriptionDispensed(uint256 recordId, uint256 billAmount)"
 ];
 
 const registryABI = [
@@ -272,12 +272,25 @@ function App() {
   const grantConsent = async (hospitalAddress, purpose, scope, duration) => {
     if (!consentContract) return;
     try {
-      const tx = await consentContract.grantConsent(hospitalAddress, purpose, "QmMedicalReportHash", scope || "All", duration || 86400, { gasLimit: 1000000 });
+      // DPDP PROTOTYPE OPTIMIZATION: 
+      // If scope looks like a CID, prioritize it for the dataHash (clinical link)
+      const actualDataHash = (scope && (scope.startsWith('Qm') || scope.length > 30)) ? scope : "QmMedicalReportHash";
+      const actualDataScope = (scope && scope.startsWith('Qm')) ? "Clinical Record" : (scope || "All");
+
+      const tx = await consentContract.grantConsent(
+        hospitalAddress, 
+        purpose, 
+        actualDataHash, 
+        actualDataScope, 
+        duration || 86400, 
+        { gasLimit: 1000000 }
+      );
       await tx.wait();
       loadConsents();
-      toast.success("Consent Granted on Blockchain");
+      toast.success("Consent & Record Link Anchored on Blockchain");
     } catch (err) {
-      toast.error("Grant failed");
+      console.error("Grant failed", err);
+      toast.error("Grant failed: " + (err.reason || err.message));
     }
   };
 

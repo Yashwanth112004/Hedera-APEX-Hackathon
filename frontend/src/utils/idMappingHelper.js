@@ -28,6 +28,14 @@ export const normalizeAddress = (address) => {
  * Generates a purely local 6-character short ID (3 random digits + last 3 chars of wallet).
  * @param {string} walletAddress The full 0x... address
  * @returns {string} 6-character short ID
+ *
+ * TODO: Project Checklist
+ * - [x] Update `MedicalRecords.sol` with `billAmount` support
+ * - [/] Add bill amount input to `PharmacyDashboard.jsx`
+ * - [ ] Update `InsuranceDashboard.jsx` to show bill amounts
+ * - [ ] Implement insurance claim initiation in `HospitalDashboard.jsx`
+ * - [ ] Implement manual claim filing in `PatientDashboard.jsx`
+ * - [ ] Verify full claim workflow (Pharmacy -> Patient -> Insurance)
  */
 export const generateLocalShortID = (walletAddress) => {
   const normalized = normalizeAddress(walletAddress);
@@ -56,17 +64,51 @@ export const resolveWalletAddress = async (input, walletMapperContract) => {
 
   // If it's 6 chars long, attempt to resolve via the WalletMapper contract
   if (input.length === 6 && walletMapperContract) {
-    try {
-      const resolvedAddress = await walletMapperContract.getWalletFromShortID(input);
-      if (resolvedAddress && resolvedAddress !== ethers.ZeroAddress) {
-        return resolvedAddress;
+    const tryResolve = async (id) => {
+      try {
+        // Use provider-connected version as it's safer for view calls
+        const provider = walletMapperContract.runner?.provider || walletMapperContract.runner;
+        if (!provider) throw new Error("No provider available");
+
+        // DIAGNOSTIC: Check if contract actually exists on this network
+        const network = await provider.getNetwork();
+        const code = await provider.getCode(WALLET_MAPPER_ADDRESS);
+        
+        if (code === "0x" || code === "0x0") {
+          console.error(`CRITICAL: WalletMapper not found at ${WALLET_MAPPER_ADDRESS} on Chain ID ${network.chainId} (${network.name})`);
+          throw new Error(`WalletMapper contract not found on the current network (Chain ID: ${network.chainId}). Please ensure you are on the correct Hedera network.`);
+        }
+
+        const readOnlyMapper = new ethers.Contract(WALLET_MAPPER_ADDRESS, WALLET_MAPPER_ABI, provider);
+        const resolvedAddress = await readOnlyMapper.getWalletFromShortID(id);
+        
+        if (resolvedAddress && resolvedAddress !== ethers.ZeroAddress) {
+          return resolvedAddress;
+        }
+      } catch (e) {
+        // RPC or Revert
+        if (e.message.includes("HTTP client error") || e.message.includes("missing revert data")) {
+          console.error(`RPC Failure resolving ${id}:`, e.message);
+          throw e;
+        }
+        return null; // Likely "Short ID not found" (revert)
       }
-    } catch (e) {
-      console.warn("Could not resolve Short ID", input, e);
-      throw new Error(`Short ID '${input}' not found on-chain.`);
+      return null;
+    };
+
+    // 1. Try exact match
+    let resolved = await tryResolve(input);
+    
+    // 2. Try uppercase fallback if not found
+    if (!resolved && input !== input.toUpperCase()) {
+      resolved = await tryResolve(input.toUpperCase());
     }
+
+    if (resolved) return resolved;
+
+    throw new Error(`Short ID '${input}' not found. Please verify the ID.`);
   }
 
-  // Fallback (might throw an invalid address error later in the calling function)
+  // Fallback
   return input;
 };

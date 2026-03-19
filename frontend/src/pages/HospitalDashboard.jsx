@@ -35,8 +35,8 @@ const HospitalDashboard = ({
   const [reqWallet, setReqWallet] = useState("");
   const [reqRole, setReqRole] = useState("1");
 
-  // Consent Request State
   const [showRequestModal, setShowRequestModal] = useState(false);
+  const [showInsuranceModal, setShowInsuranceModal] = useState(false);
   const [requestData, setRequestData] = useState({ patientWallet: '', purpose: '', scope: 'All' });
   const [viewDataSettings, setViewDataSettings] = useState({ scope: 'All', purpose: 'Clinical Review' });
 
@@ -238,6 +238,10 @@ const HospitalDashboard = ({
         <div className="dashboard-actions" style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap' }}>
           <button className="primary-btn" style={{ backgroundColor: '#EF4444' }} onClick={() => setShowEmergencyModal(true)}>
             🚨 Emergency
+          </button>
+
+          <button className="secondary-btn" onClick={() => setShowInsuranceModal(true)} style={{ background: '#3B82F6', color: 'white', border: 'none' }}>
+            🏢 Request Insurance
           </button>
           
           <button className="secondary-btn" onClick={() => setShowOrgRegForm(true)} style={{ marginLeft: 'auto' }}>
@@ -480,6 +484,73 @@ const HospitalDashboard = ({
               </div>
               <div className="modal-actions">
                 <button type="submit" className="primary-btn" disabled={loading}>Anchor Encrypted Record</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+      {showInsuranceModal && (
+        <div className="modal-overlay">
+          <div className="modal">
+            <div className="modal-header">
+              <h3>Initiate Insurance Claim Request</h3>
+              <button className="close-btn" onClick={() => setShowInsuranceModal(false)}>×</button>
+            </div>
+            <form onSubmit={async (e) => {
+              e.preventDefault();
+              const insProvider = e.target.insuranceWallet.value;
+              const patient = e.target.patientWallet.value;
+              const surgeryType = e.target.surgeryType.value;
+              const purpose = "Surgery Claim Review - " + (surgeryType || "General");
+              
+              if (!insProvider || !patient) {
+                toast.error("Insurance Provider and Patient information required");
+                return;
+              }
+
+              try {
+                setLoading(true);
+                toast.info("Sending Claim Initialization notice to Insurance...");
+                
+                const provider = new ethers.BrowserProvider(window.ethereum);
+                const signer = await provider.getSigner();
+                const auditWithSigner = auditLogContract.connect(signer);
+                
+                const { resolveWalletAddress } = await import('../utils/idMappingHelper');
+                const patientWallet = await resolveWalletAddress(patient, walletMapperContract);
+                const insuranceWallet = await resolveWalletAddress(insProvider, walletMapperContract);
+
+                const tx = await auditWithSigner.logAccessRequested(
+                  patientWallet,
+                  insuranceWallet,
+                  purpose,
+                  Math.floor(Date.now() / 1000),
+                  { gasLimit: 1000000 }
+                );
+                await tx.wait();
+
+                toast.success("Insurance notified via Ledger Event!");
+                setShowInsuranceModal(false);
+              } catch (err) {
+                toast.error("Failed to notify insurance: " + err.message);
+              } finally {
+                setLoading(false);
+              }
+            }} className="modal-body">
+              <div className="form-group">
+                <label>Insurance Provider (Wallet or Short ID) *</label>
+                <input name="insuranceWallet" className="glass-input" placeholder="0x... or INS123" required />
+              </div>
+              <div className="form-group">
+                <label>Patient (Wallet or Short ID) *</label>
+                <input name="patientWallet" className="glass-input" placeholder="0x... or PAT456" required />
+              </div>
+              <div className="form-group">
+                <label>Claim Category / Surgery Type</label>
+                <input name="surgeryType" className="glass-input" placeholder="e.g. Cardiac Bypass" />
+              </div>
+              <div className="modal-actions">
+                <button type="submit" className="primary-btn" disabled={loading}>Log Claim Request</button>
               </div>
             </form>
           </div>
