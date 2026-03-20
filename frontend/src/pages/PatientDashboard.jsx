@@ -211,7 +211,7 @@ const PatientDashboard = ({
     }
 
     saveBeneficiaries(updated);
-    
+
     // NOTIFICATION: Store notification for the beneficiary wallet
     try {
       const notifyKey = `beneficiary_notifications_${finalWallet.toLowerCase()}`;
@@ -304,16 +304,16 @@ const PatientDashboard = ({
     // Prefetch role for disclaimer logic (Pharmacy role = 4)
     // 1. Immediate text-based detection (fast & robust for UI)
     const p = req.purpose.toLowerCase();
-    let isPharmaText = p.includes('pharmacy') || 
-                       p.includes('medicine') || 
-                       p.includes('prescription') || 
-                       p.includes('dispense') || 
-                       p.includes('dispensation') || 
-                       p.includes('fulfillment') ||
-                       p.includes('rx') || 
-                       p.includes('chemist') || 
-                       p.includes('medication');
-    
+    let isPharmaText = p.includes('pharmacy') ||
+      p.includes('medicine') ||
+      p.includes('prescription') ||
+      p.includes('dispense') ||
+      p.includes('dispensation') ||
+      p.includes('fulfillment') ||
+      p.includes('rx') ||
+      p.includes('chemist') ||
+      p.includes('medication');
+
     setIsPharmacyRequest(isPharmaText);
     console.log(`[Disclaimer-Debug] Initial text-check: ${isPharmaText} (Purpose: "${p}")`);
 
@@ -469,7 +469,7 @@ const PatientDashboard = ({
 
     try {
       toast.info("Processing Universal Erasure Protocol...");
-      
+
       // 1. Revoke all active
       for (let i = 0; i < consents.length; i++) {
         if (consents[i].isActive) {
@@ -909,7 +909,7 @@ const PatientDashboard = ({
                             onClick={() => handleEraseConsent(consent.originalIndex)}
                             style={{ padding: '0.3rem 0.6rem', fontSize: '0.75rem', background: '#F8FAFC', border: '1px solid var(--border-light)' }}
                           >
-                            Right to Forget
+                            Right to Erasure
                           </button>
                         </div>
                       </td>
@@ -1133,11 +1133,11 @@ const PatientDashboard = ({
               <button className="close-btn" onClick={() => setShowGrantForm(false)}>×</button>
             </div>
             <form onSubmit={handleGrantConsent} className="modal-body">
-              <div className="alert-info" style={{ 
-                background: 'rgba(20, 184, 166, 0.05)', 
-                padding: '1rem', 
-                borderRadius: '12px', 
-                marginBottom: '1.5rem', 
+              <div className="alert-info" style={{
+                background: 'rgba(20, 184, 166, 0.05)',
+                padding: '1rem',
+                borderRadius: '12px',
+                marginBottom: '1.5rem',
                 fontSize: '0.85rem',
                 border: '1px solid rgba(20, 184, 166, 0.1)',
                 display: 'flex',
@@ -1225,12 +1225,12 @@ const PatientDashboard = ({
               </p>
 
               {isPharmacyRequest && (
-                <p style={{ 
-                  color: '#EF4444', 
-                  fontWeight: 'bold', 
-                  marginBottom: '1.5rem', 
-                  padding: '1rem', 
-                  background: '#FEF2F2', 
+                <p style={{
+                  color: '#EF4444',
+                  fontWeight: 'bold',
+                  marginBottom: '1.5rem',
+                  padding: '1rem',
+                  background: '#FEF2F2',
                   border: '1px solid #FCA5A5',
                   borderRadius: '12px',
                   fontSize: '0.9rem',
@@ -1399,10 +1399,10 @@ const PatientDashboard = ({
                   required
                 />
               </div>
-              <div style={{ 
-                background: 'var(--background-soft)', 
-                padding: '1rem', 
-                borderRadius: '12px', 
+              <div style={{
+                background: 'var(--background-soft)',
+                padding: '1rem',
+                borderRadius: '12px',
                 border: '1px solid var(--border-light)',
                 display: 'flex',
                 gap: '0.75rem',
@@ -1456,7 +1456,7 @@ const PatientDashboard = ({
                             {log.action}
                           </span>
                         </td>
-                        <td>{log.dataFiduciary === ethers.ZeroAddress ? <span style={{color: 'var(--medical-primary)', fontWeight: 'bold'}}>System</span> : <code style={{background: '#f1f5f9', padding: '2px 6px', borderRadius: '4px', border: '1px solid #cbd5e1', color: '#0f172a'}}>{log.dataFiduciary.slice(0, 8)}...</code>}</td>
+                        <td>{log.dataFiduciary === ethers.ZeroAddress ? <span style={{ color: 'var(--medical-primary)', fontWeight: 'bold' }}>System</span> : <code style={{ background: '#f1f5f9', padding: '2px 6px', borderRadius: '4px', border: '1px solid #cbd5e1', color: '#0f172a' }}>{log.dataFiduciary.slice(0, 8)}...</code>}</td>
                         <td style={{ fontWeight: '500', color: 'var(--text-main)' }}>{log.purpose}</td>
                         <td style={{ fontSize: '0.8rem', color: 'var(--text-main)', fontWeight: '600' }}>{new Date(Number(log.timestamp) * 1000).toLocaleString()}</td>
                       </tr>
@@ -1524,10 +1524,10 @@ const PatientDashboard = ({
               <button className="close-btn" onClick={() => setShowNomineeModal(false)}>×</button>
             </div>
             <div className="modal-body">
-              <div style={{ 
-                background: 'rgba(59, 130, 246, 0.05)', 
-                padding: '1.25rem', 
-                borderRadius: '12px', 
+              <div style={{
+                background: 'rgba(59, 130, 246, 0.05)',
+                padding: '1.25rem',
+                borderRadius: '12px',
                 border: '1px solid rgba(59, 130, 246, 0.1)',
                 display: 'flex',
                 gap: '1rem',
@@ -1594,10 +1594,10 @@ const PatientDashboard = ({
               <button className="close-btn" onClick={() => setShowClaimModal(false)}>×</button>
             </div>
             <div className="modal-body">
-              <div style={{ 
-                background: 'rgba(6, 182, 212, 0.05)', 
-                padding: '1.25rem', 
-                borderRadius: '12px', 
+              <div style={{
+                background: 'rgba(6, 182, 212, 0.05)',
+                padding: '1.25rem',
+                borderRadius: '12px',
                 border: '1px solid rgba(6, 182, 212, 0.1)',
                 display: 'flex',
                 gap: '1rem',
@@ -1613,14 +1613,14 @@ const PatientDashboard = ({
                 <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.6rem', fontSize: '0.9rem', fontWeight: '600' }}>
                   Insurance Provider (Wallet or Short ID) *
                 </label>
-                <input 
-                  type="text" 
-                  className="glass-input" 
-                  placeholder="e.g. INS123 or 0x..." 
+                <input
+                  type="text"
+                  className="glass-input"
+                  placeholder="e.g. INS123 or 0x..."
                   value={claimTarget.provider}
                   onChange={e => setClaimTarget({ ...claimTarget, provider: e.target.value })}
                   style={{ fontSize: '0.9rem' }}
-                  required 
+                  required
                 />
               </div>
               <div className="form-group" style={{ marginBottom: '2rem' }}>
@@ -1629,10 +1629,10 @@ const PatientDashboard = ({
                 </label>
                 <input type="text" className="glass-input" placeholder="e.g. POL-9988" style={{ fontSize: '0.9rem' }} />
               </div>
-              
+
               <div className="modal-actions" style={{ marginTop: 0 }}>
-                <button 
-                  className="primary-btn" 
+                <button
+                  className="primary-btn"
                   style={{ flex: 1, background: 'var(--medical-aqua)', boxShadow: '0 8px 16px -4px rgba(6, 182, 212, 0.3)' }}
                   disabled={!claimTarget.provider}
                   onClick={async () => {
@@ -1640,14 +1640,14 @@ const PatientDashboard = ({
                       toast.info("Authorizing Insurance Access...");
                       const { resolveWalletAddress } = await import('../utils/idMappingHelper');
                       const insuranceWallet = await resolveWalletAddress(claimTarget.provider, walletMapperContract);
-                      
+
                       await onGrantConsent(
-                        insuranceWallet, 
-                        `Insurance Claim Filing for CID ${claimTarget.cid.slice(0,8)}`, 
-                        claimTarget.cid, 
+                        insuranceWallet,
+                        `Insurance Claim Filing for CID ${claimTarget.cid.slice(0, 8)}`,
+                        claimTarget.cid,
                         86400 * 30 // 30 days
                       );
-                      
+
                       setShowClaimModal(false);
                       toast.success("Access granted to Insurance Provider!");
                     } catch (err) {

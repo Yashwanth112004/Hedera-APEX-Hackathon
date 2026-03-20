@@ -1,8 +1,6 @@
 import React, { useState } from 'react';
 import { toast } from 'react-toastify';
-import { Scanner } from '@yudiel/react-qr-scanner';
 import { ethers } from 'ethers';
-import { normalizeAddress } from '../utils/idMappingHelper';
 import { getSafePendingRequests } from '../utils/consentHelper';
 
 const HospitalDashboard = ({
@@ -44,7 +42,7 @@ const HospitalDashboard = ({
   const [accessLogs, setAccessLogs] = useState([]);
   const [loading, setLoading] = useState(false);
   const [stats, setStats] = useState({ requests: 0, uploads: 0, approved: 0, logs: 0 });
-  
+
   // Data States for Emergency Retrieval
   const [emergencyRecords, setEmergencyRecords] = useState([]);
   const [linkedRecords, setLinkedRecords] = useState([]);
@@ -143,7 +141,7 @@ const HospitalDashboard = ({
       const provider = new ethers.BrowserProvider(window.ethereum);
       const { resolveWalletAddress } = await import('../utils/idMappingHelper');
       const targetWallet = await resolveWalletAddress(target, walletMapperContract);
-      
+
       if (medicalRecordsContract) {
         toast.info(isEmergency ? "🚨 Aggregating Global Clinical Data..." : "Fetching records...");
         const readContract = medicalRecordsContract.connect(provider);
@@ -165,22 +163,22 @@ const HospitalDashboard = ({
           const { getSafePatientConsents } = await import('../utils/consentHelper');
           const consentRead = consentContract.connect(provider);
           const cons = await getSafePatientConsents(consentRead, targetWallet, consentContract.target, provider);
-          
+
           const linked = [];
           cons.forEach(c => {
             if (c.isActive && c.dataHash) {
               c.dataHash.split(',').forEach(cid => {
                 if (cid.trim()) linked.push({
-                   cid: cid.trim(),
-                   purpose: c.purpose,
-                   sharedAt: c.grantedAt
+                  cid: cid.trim(),
+                  purpose: c.purpose,
+                  sharedAt: c.grantedAt
                 });
               });
             }
           });
           setLinkedRecords(linked);
         }
-        
+
         toast.success("Emergency context sync complete.");
       }
     } catch (err) {
@@ -240,6 +238,7 @@ const HospitalDashboard = ({
       setLoading(true);
       toast.info("Preparing DPDP-compliant record...");
 
+      const { resolveWalletAddress } = await import('../utils/idMappingHelper');
       const targetWallet = await resolveWalletAddress(uploadData.patientAddress, walletMapperContract);
 
       // Feature: Sensitivity Tagging in IPFS payload
@@ -298,9 +297,6 @@ const HospitalDashboard = ({
   };
 
   const dashboardCards = [
-    { title: 'Patient Requests', value: stats.requests, icon: '👥', color: 'var(--medical-secondary)' },
-    { title: 'Uploaded Records', value: stats.uploads, icon: '📤', color: 'var(--status-approved)' },
-    { title: 'Approved Consents', value: stats.approved, icon: '✅', color: 'var(--medical-primary)' },
     { title: 'Access Logs', value: stats.logs, icon: '🔍', color: 'var(--medical-aqua)' }
   ];
 
@@ -321,7 +317,7 @@ const HospitalDashboard = ({
           <button className="secondary-btn" onClick={() => setShowInsuranceModal(true)} style={{ background: '#3B82F6', color: 'white', border: 'none' }}>
             🏢 Request Insurance
           </button>
-          
+
           <button className="secondary-btn" onClick={() => setShowOrgRegForm(true)} style={{ marginLeft: 'auto' }}>
             Staff Registration
           </button>
@@ -330,13 +326,35 @@ const HospitalDashboard = ({
 
       <div className="dashboard-grid">
         {dashboardCards.map((card, index) => (
-          <div key={index} className="dashboard-card floating-card" style={{ borderTop: `4px solid ${card.color}` }}>
-            <div className="card-icon" style={{ backgroundColor: `${card.color}10`, color: card.color }}>
+          <div key={index} className="dashboard-card floating-card" style={{ 
+            borderTop: `4px solid ${card.color}`,
+            padding: '2rem',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '2rem',
+            maxWidth: '450px',
+            background: 'linear-gradient(to bottom right, #ffffff, #f8faff)'
+          }}>
+            <div className="card-icon" style={{ 
+              backgroundColor: `${card.color}15`, 
+              color: card.color,
+              width: '64px',
+              height: '64px',
+              borderRadius: '16px',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              fontSize: '1.8rem',
+              boxShadow: `0 8px 16px -4px ${card.color}30`
+            }}>
               {card.icon}
             </div>
             <div className="card-content">
-              <h3>{card.title}</h3>
-              <p className="card-value">{card.value}</p>
+              <h3 style={{ fontSize: '1rem', color: 'var(--text-muted)', marginBottom: '0.4rem', fontWeight: '500' }}>{card.title}</h3>
+              <p className="card-value" style={{ fontSize: '2.2rem', fontWeight: '800', color: 'var(--text-main)', lineHeight: '1' }}>{card.value}</p>
+              <p style={{ fontSize: '0.75rem', color: '#10B981', marginTop: '0.6rem', fontWeight: '700', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                ● On-chain Verified
+              </p>
             </div>
           </div>
         ))}
@@ -378,13 +396,13 @@ const HospitalDashboard = ({
               </tbody>
             </table>
           </div>
-          
+
           {decryptedRecord && (
             <div className="floating-card" style={{ marginTop: '2rem', background: 'rgba(239, 68, 68, 0.05)', borderColor: '#EF4444' }}>
-               <h4 style={{ color: '#EF4444', marginBottom: '1rem' }}>Clinical Data (Decrypted)</h4>
-               <p><strong>Findings:</strong> {decryptedRecord.clinicalData}</p>
-               <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>Type: {decryptedRecord.type} | Sensitivity: {decryptedRecord.sensitivity}</p>
-               <button className="secondary-btn" onClick={() => setDecryptedRecord(null)} style={{ marginTop: '1rem' }}>Close Viewer</button>
+              <h4 style={{ color: '#EF4444', marginBottom: '1rem' }}>Clinical Data (Decrypted)</h4>
+              <p><strong>Findings:</strong> {decryptedRecord.clinicalData}</p>
+              <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>Type: {decryptedRecord.type} | Sensitivity: {decryptedRecord.sensitivity}</p>
+              <button className="secondary-btn" onClick={() => setDecryptedRecord(null)} style={{ marginTop: '1rem' }}>Close Viewer</button>
             </div>
           )}
         </div>
@@ -627,7 +645,7 @@ const HospitalDashboard = ({
               const patient = e.target.patientWallet.value;
               const surgeryType = e.target.surgeryType.value;
               const purpose = "Surgery Claim Review - " + (surgeryType || "General");
-              
+
               if (!insProvider || !patient) {
                 toast.error("Insurance Provider and Patient information required");
                 return;
@@ -636,11 +654,11 @@ const HospitalDashboard = ({
               try {
                 setLoading(true);
                 toast.info("Sending Claim Initialization notice to Insurance...");
-                
+
                 const provider = new ethers.BrowserProvider(window.ethereum);
                 const signer = await provider.getSigner();
                 const auditWithSigner = auditLogContract.connect(signer);
-                
+
                 const { resolveWalletAddress } = await import('../utils/idMappingHelper');
                 const patientWallet = await resolveWalletAddress(patient, walletMapperContract);
                 const insuranceWallet = await resolveWalletAddress(insProvider, walletMapperContract);
