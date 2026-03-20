@@ -44,6 +44,13 @@ const HospitalDashboard = ({
   const [accessLogs, setAccessLogs] = useState([]);
   const [loading, setLoading] = useState(false);
   const [stats, setStats] = useState({ requests: 0, uploads: 0, approved: 0, logs: 0 });
+  
+  // Data States for Emergency Retrieval
+  const [emergencyRecords, setEmergencyRecords] = useState([]);
+  const [linkedRecords, setLinkedRecords] = useState([]);
+  const [decryptedRecord, setDecryptedRecord] = useState(null);
+  const [isDecrypting, setIsDecrypting] = useState(false);
+  const [ipfsCid, setIpfsCid] = useState('');
 
   React.useEffect(() => {
     const loadHistory = async () => {
@@ -122,10 +129,80 @@ const HospitalDashboard = ({
       }
       setStats(prev => ({ ...prev, requests: totalPending, logs: myLogs.length }));
 
-    } catch (err) {
-      console.error("Hospital log sync failed:", err);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const fetchAuthorizedRecords = async (isEmergency = false) => {
+    const target = isEmergency ? emergencyTarget : "";
+    if (!target) return;
+
+    setLoading(true);
+    try {
+      const provider = new ethers.BrowserProvider(window.ethereum);
+      const { resolveWalletAddress } = await import('../utils/idMappingHelper');
+      const targetWallet = await resolveWalletAddress(target, walletMapperContract);
+      
+      if (medicalRecordsContract) {
+        toast.info(isEmergency ? "🚨 Aggregating Global Clinical Data..." : "Fetching records...");
+        const readContract = medicalRecordsContract.connect(provider);
+        const records = await readContract.getPatientRecords(targetWallet);
+
+        const formatted = records.map(r => ({
+          id: r.id.toString(),
+          type: r.recordType,
+          status: isEmergency ? "🚨 EMERGENCY" : "Authorized",
+          cid: r.cid,
+          provider: r.provider,
+          billAmount: r.billAmount ? r.billAmount.toString() : '0'
+        }));
+
+        setEmergencyRecords(formatted);
+
+        // Fetch specifically linked/consented data
+        if (consentContract) {
+          const { getSafePatientConsents } = await import('../utils/consentHelper');
+          const consentRead = consentContract.connect(provider);
+          const cons = await getSafePatientConsents(consentRead, targetWallet, consentContract.target, provider);
+          
+          const linked = [];
+          cons.forEach(c => {
+            if (c.isActive && c.dataHash) {
+              c.dataHash.split(',').forEach(cid => {
+                if (cid.trim()) linked.push({
+                   cid: cid.trim(),
+                   purpose: c.purpose,
+                   sharedAt: c.grantedAt
+                });
+              });
+            }
+          });
+          setLinkedRecords(linked);
+        }
+        
+        toast.success("Emergency context sync complete.");
+      }
+    } catch (err) {
+      console.error("Fetch failed:", err);
+      toast.error("Emergency data retrieval failed.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleDecryptRecord = async (cid) => {
+    try {
+      setIsDecrypting(true);
+      const { fetchFromPinata, decryptData } = await import('../utils/ipfsHelper');
+      const cipher = await fetchFromPinata(cid);
+      const raw = decryptData(cipher);
+      setDecryptedRecord(raw);
+      toast.success("Record Decrypted");
+    } catch (err) {
+      toast.error("Decryption failed");
+    } finally {
+      setIsDecrypting(false);
     }
   };
 
@@ -145,6 +222,7 @@ const HospitalDashboard = ({
         setAttendingName("");
         setStats(prev => ({ ...prev, approved: prev.approved + 1 }));
         syncHospitalLogs();
+        fetchAuthorizedRecords(true);
       }
     } finally {
       setLoading(false);
@@ -264,6 +342,53 @@ const HospitalDashboard = ({
         ))}
       </div>
 
+      {emergencyRecords.length > 0 && (
+        <div className="dashboard-section glass-panel" style={{ borderLeft: '6px solid #EF4444' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
+            <div>
+              <h3 style={{ color: '#EF4444' }}>🚨 EMERGENCY CLINICAL VIEW</h3>
+              <p style={{ fontSize: '0.9rem', color: 'var(--text-muted)' }}>Aggregated clinical records authorized via Break-Glass protocol.</p>
+            </div>
+          </div>
+          <div className="table-container">
+            <table className="data-table">
+              <thead>
+                <tr>
+                  <th>Type</th>
+                  <th>CID (Hash)</th>
+                  <th>Provider</th>
+                  <th>Bill</th>
+                  <th>Action</th>
+                </tr>
+              </thead>
+              <tbody>
+                {emergencyRecords.map((r, idx) => (
+                  <tr key={idx}>
+                    <td><strong>{r.type}</strong></td>
+                    <td style={{ fontFamily: 'monospace', fontSize: '0.8rem' }}>{r.cid.slice(0, 16)}...</td>
+                    <td><span style={{ fontSize: '0.8rem' }}>{r.provider.slice(0, 10)}...</span></td>
+                    <td>{r.billAmount} HBAR</td>
+                    <td>
+                      <button className="primary-btn" style={{ background: '#EF4444', padding: '0.4rem 0.8rem' }} onClick={() => handleDecryptRecord(r.cid)}>
+                        🔓 Decrypt
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          
+          {decryptedRecord && (
+            <div className="floating-card" style={{ marginTop: '2rem', background: 'rgba(239, 68, 68, 0.05)', borderColor: '#EF4444' }}>
+               <h4 style={{ color: '#EF4444', marginBottom: '1rem' }}>Clinical Data (Decrypted)</h4>
+               <p><strong>Findings:</strong> {decryptedRecord.clinicalData}</p>
+               <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>Type: {decryptedRecord.type} | Sensitivity: {decryptedRecord.sensitivity}</p>
+               <button className="secondary-btn" onClick={() => setDecryptedRecord(null)} style={{ marginTop: '1rem' }}>Close Viewer</button>
+            </div>
+          )}
+        </div>
+      )}
 
       <div className="dashboard-section glass-panel">
         <h3>Recent Access Logs</h3>

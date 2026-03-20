@@ -1,7 +1,58 @@
-import React from 'react';
-import { Shield, Scale, HelpCircle, FileText, AlertCircle } from 'lucide-react';
+import React, { useState } from 'react';
+import { Shield, Scale, HelpCircle, FileText, AlertCircle, CheckCircle } from 'lucide-react';
+import { toast } from 'react-toastify';
 
 const LegalCompliance = () => {
+    const [submitted, setSubmitted] = useState(false);
+    const [grievance, setGrievance] = useState({
+        wallet: '',
+        category: 'Unauthorized Data Access',
+        description: ''
+    });
+
+    const handleSubmit = (e) => {
+        e.preventDefault();
+        if (!grievance.wallet || !grievance.description) {
+            return toast.error("Please fill all required fields");
+        }
+
+        const newGrievance = {
+            ...grievance,
+            id: `GRV-${Date.now()}`,
+            status: 'New',
+            timestamp: new Date().toISOString(),
+            date: new Date().toLocaleDateString()
+        };
+
+        const existing = JSON.parse(localStorage.getItem('dpdp_grievances') || '[]');
+        existing.push(newGrievance);
+        localStorage.setItem('dpdp_grievances', JSON.stringify(existing));
+
+        toast.success("Grievance filed successfully!");
+        setSubmitted(true);
+
+        // Auto-redirect simulation
+        setTimeout(() => {
+            // Note: In this single-page demo, we show the confirmation view
+            // The Admin can see this in the Admin Portal independently.
+        }, 2000);
+    };
+
+    if (submitted) {
+        return (
+            <div className="compliance-page animate-fade-in" style={{ padding: '4rem', textAlign: 'center' }}>
+                <div style={{ background: 'rgba(16, 185, 129, 0.1)', padding: '2rem', borderRadius: '24px', display: 'inline-block', marginBottom: '2rem' }}>
+                    <CheckCircle size={64} color="#10B981" />
+                </div>
+                <h2 style={{ fontSize: '2rem', color: '#065F46', marginBottom: '1rem' }}>Grievance Submitted Successfully</h2>
+                <p style={{ color: 'var(--text-muted)', marginBottom: '2rem' }}>
+                    Your complaint (ID: {grievance.id || 'Pending'}) has been securely logged on the governance layer. <br/>
+                    An Admin will review this shortly. You can track status in the System Governance portal.
+                </p>
+                <button className="secondary-btn" onClick={() => setSubmitted(false)}>File Another Grievance</button>
+            </div>
+        );
+    }
     return (
         <div className="compliance-page animate-fade-in" style={{ padding: '2rem', maxWidth: '1000px', margin: '0 auto' }}>
             <header style={{ marginBottom: '3rem', textAlign: 'center' }}>
@@ -42,16 +93,34 @@ const LegalCompliance = () => {
                         <h2 style={{ fontSize: '1.5rem', margin: 0, color: '#991B1B' }}>Report a Violation</h2>
                     </div>
                     <p style={{ color: '#4B5563', marginBottom: '1.5rem' }}>If you believe your data has been misused or accessed without valid consent, please file a grievance below.</p>
-                    <form style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-                        <input type="text" placeholder="Wallet Address / Short ID" className="glass-input" />
-                        <select className="glass-input">
+                    <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                        <input 
+                            type="text" 
+                            placeholder="Wallet Address / Short ID" 
+                            className="glass-input" 
+                            value={grievance.wallet}
+                            onChange={(e) => setGrievance({...grievance, wallet: e.target.value})}
+                            required
+                        />
+                        <select 
+                            className="glass-input"
+                            value={grievance.category}
+                            onChange={(e) => setGrievance({...grievance, category: e.target.value})}
+                        >
                             <option>Unauthorized Data Access</option>
                             <option>Refusal to Erase Data</option>
                             <option>Incorrect Data Storage</option>
                             <option>Other Grievance</option>
                         </select>
-                        <textarea placeholder="Describe the incident..." className="glass-input" style={{ minHeight: '100px' }}></textarea>
-                        <button type="button" className="primary-btn" style={{ background: '#DC2626' }}>Submit Grievance</button>
+                        <textarea 
+                            placeholder="Describe the incident..." 
+                            className="glass-input" 
+                            style={{ minHeight: '100px' }}
+                            value={grievance.description}
+                            onChange={(e) => setGrievance({...grievance, description: e.target.value})}
+                            required
+                        ></textarea>
+                        <button type="submit" className="primary-btn" style={{ background: '#DC2626' }}>Submit Grievance</button>
                     </form>
                 </section>
 

@@ -139,19 +139,13 @@ function App() {
       try {
         await signer.signMessage(message);
         setAuthenticated(true);
+        localStorage.setItem('hedera_hc_authenticated', 'true');
       } catch (err) {
         toast.error("Digital signature required for compliance");
         return;
       }
 
-      setAccount(wallet);
-      setConsent(new ethers.Contract(CONSENT_MANAGER, consentABI, signer));
-      setRegistry(new ethers.Contract(REGISTRY, registryABI, signer));
-      setAccess(new ethers.Contract(ACCESS_MANAGER, accessABI, signer));
-      setAuditLog(new ethers.Contract(AUDIT_LOG, auditLogABI, signer));
-      setMedicalRecords(new ethers.Contract(MEDICAL_RECORDS, medicalRecordsABI, signer));
-      setWalletMapper(new ethers.Contract(WALLET_MAPPER_ADDRESS, WALLET_MAPPER_ABI, signer));
-      setRBAC(new ethers.Contract(RBAC_CONTRACT_ADDRESS, roleABI, signer));
+      await initializeSession(signer, wallet, null);
 
       const rolesToSelect = ["Patient"];
       try {
@@ -194,7 +188,9 @@ function App() {
       if (rolesToSelect.length > 1) {
         setShowContextSelection(true);
       } else {
-        setRole("patient");
+        const finalRole = "patient";
+        setRole(finalRole);
+        localStorage.setItem('hedera_hc_role', finalRole);
       }
       toast.success("Identity Authenticated");
     } catch (err) {
@@ -202,6 +198,48 @@ function App() {
       toast.error("Authentication failed");
     }
   };
+
+  const initializeSession = async (signer, wallet, savedRole) => {
+    const provider = new ethers.BrowserProvider(window.ethereum);
+    setAccount(wallet);
+    localStorage.setItem('hedera_hc_account', wallet);
+    
+    setConsent(new ethers.Contract(CONSENT_MANAGER, consentABI, signer));
+    setRegistry(new ethers.Contract(REGISTRY, registryABI, signer));
+    setAccess(new ethers.Contract(ACCESS_MANAGER, accessABI, signer));
+    setAuditLog(new ethers.Contract(AUDIT_LOG, auditLogABI, signer));
+    setMedicalRecords(new ethers.Contract(MEDICAL_RECORDS, medicalRecordsABI, signer));
+    setWalletMapper(new ethers.Contract(WALLET_MAPPER_ADDRESS, WALLET_MAPPER_ABI, signer));
+    setRBAC(new ethers.Contract(RBAC_CONTRACT_ADDRESS, roleABI, signer));
+
+    if (savedRole) {
+      setRole(savedRole);
+      setAuthenticated(localStorage.getItem('hedera_hc_authenticated') === 'true');
+    }
+  };
+
+  useEffect(() => {
+    const autoReconnect = async () => {
+      const savedAccount = localStorage.getItem('hedera_hc_account');
+      const savedRole = localStorage.getItem('hedera_hc_role');
+      
+      if (window.ethereum && savedAccount) {
+        try {
+          const provider = new ethers.BrowserProvider(window.ethereum);
+          const accounts = await provider.send("eth_accounts", []);
+          
+          if (accounts.length > 0 && accounts[0].toLowerCase() === savedAccount.toLowerCase()) {
+            const signer = await provider.getSigner();
+            await initializeSession(signer, accounts[0], savedRole);
+            console.log("Session restored for", accounts[0]);
+          }
+        } catch (err) {
+          console.warn("Auto-reconnect failed", err);
+        }
+      }
+    };
+    autoReconnect();
+  }, []);
 
   const connectAdmin = async () => {
     if (!window.ethereum) {
@@ -225,6 +263,14 @@ function App() {
 
       setAccount(safeWallet);
       setRole("admin");
+      localStorage.setItem('hedera_hc_account', safeWallet);
+      localStorage.setItem('hedera_hc_role', 'admin');
+      localStorage.setItem('hedera_hc_authenticated', 'true');
+      
+      setAuthenticated(true);
+      const signer = await provider.getSigner();
+      await initializeSession(signer, safeWallet, "admin");
+
       toast.success("Admin Portal Accessed Successfully");
     } catch (err) {
       console.error(err);
@@ -239,6 +285,10 @@ function App() {
     setShowContextSelection(false);
     setActingAsAccount("");
     setActiveTab("dashboard");
+    
+    localStorage.removeItem('hedera_hc_account');
+    localStorage.removeItem('hedera_hc_role');
+    localStorage.removeItem('hedera_hc_authenticated');
   };
 
   const handleBeneficiaryLogin = (e) => {
@@ -587,7 +637,11 @@ function App() {
                 <button
                   key={r}
                   className="glass-panel floating-card"
-                  onClick={() => { setRole(r.toLowerCase()); setShowContextSelection(false); }}
+                  onClick={() => { 
+                    setRole(r.toLowerCase()); 
+                    localStorage.setItem('hedera_hc_role', r.toLowerCase());
+                    setShowContextSelection(false); 
+                  }}
                   style={{
                     padding: '3rem 1.5rem',
                     cursor: 'pointer',

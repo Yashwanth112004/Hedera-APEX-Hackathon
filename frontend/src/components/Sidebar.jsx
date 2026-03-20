@@ -38,7 +38,7 @@ const Sidebar = ({ role, activeTab, onTabChange }) => {
 
   const adminMenu = [
     { id: 'dashboard', label: 'Management', icon: '🛡️' },
-    { id: 'internal-audit', label: 'System Logs', icon: '🔍' },
+    { id: 'audit', label: 'System Logs', icon: '🔍' },
   ];
 
   const getMenuItems = () => {

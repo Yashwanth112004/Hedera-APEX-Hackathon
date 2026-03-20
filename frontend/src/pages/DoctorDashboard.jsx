@@ -204,7 +204,7 @@ const DoctorDashboard = ({
         }
     };
 
-    const fetchAuthorizedRecords = async () => {
+    const fetchAuthorizedRecords = async (isEmergency = false) => {
         if (!patientWallet) {
             toast.error("Enter Patient Wallet Address or Short ID to fetch records");
             return;
@@ -226,39 +226,49 @@ const DoctorDashboard = ({
             return;
         }
 
+        let formatted = [];
+        let linked = [];
+        let pendingRequestsByMe = [];
+
         try {
-            toast.info("Fetching mapped records from Hedera...");
-            // In a fully robust scenario we verify the caller has active consent first.
-            // For this UI demo we assume if the doctor knows the wallet and has consent, they can fetch.
+            if (isEmergency) {
+                toast.warn("🔍 EMERGENCY SYNC: Aggregating all global clinical sources...", { autoClose: 5000 });
+            } else {
+                toast.info("Fetching mapped records from Hedera...");
+            }
+            
             if (medicalRecordsContract) {
                 const provider = new ethers.BrowserProvider(window.ethereum);
                 const readContract = medicalRecordsContract.connect(provider);
                 const records = await readContract.getPatientRecords(targetWallet);
 
-                // IMPORTANT: Only show records that the doctor themselves uploaded.
-                // Lab-uploaded records should NOT automatically appear here.
-                const formatted = records
-                    .filter(r => r.provider.toLowerCase() === account.toLowerCase())
+                // If NOT emergency, only show records this doctor uploaded.
+                // If EMERGENCY, show ALL records found for this patient.
+                formatted = records
+                    .filter(r => isEmergency || r.provider.toLowerCase() === account.toLowerCase())
                     .map(r => ({
-                    id: r.id.toString(),
-                    type: r.recordType,
-                    status: "Authorized",
-                    cid: r.cid,
-                    provider: r.provider
-                }));
+                        id: r.id.toString(),
+                        type: r.recordType,
+                        status: isEmergency ? "🚨 EMERGENCY ACCESS" : "Authorized",
+                        cid: r.cid,
+                        provider: r.provider,
+                        billAmount: r.billAmount ? r.billAmount.toString() : '0'
+                    }));
 
                 setActiveConsents(formatted);
 
-                // --- NEW: Fetch specifically linked records from ConsentManager ---
+                // --- Fetch specifically linked records from ConsentManager ---
                 if (consentContract) {
                     const consentReadContract = consentContract.connect(provider);
                     const patientConsents = await getSafePatientConsents(consentReadContract, targetWallet, consentContract.target, provider);
 
                     const normalizedDoctor = account.toLowerCase();
-                    const linked = [];
-
+                    
                     patientConsents.forEach(c => {
-                        if (c.isActive && c.dataFiduciary.toLowerCase() === normalizedDoctor && c.dataHash) {
+                        // In emergency Mode, we take ALL active consents, regardless of who the fiduciary is
+                        const isAuthorized = isEmergency || (c.dataFiduciary.toLowerCase() === normalizedDoctor);
+                        
+                        if (c.isActive && isAuthorized && c.dataHash) {
                             const cids = c.dataHash.split(',');
                             cids.forEach(cid => {
                                 if (cid.trim()) {
@@ -266,7 +276,8 @@ const DoctorDashboard = ({
                                         cid: cid.trim(),
                                         purpose: c.purpose,
                                         expiry: c.expiry,
-                                        sharedAt: c.grantedAt
+                                        sharedAt: c.grantedAt,
+                                        isEmergencySource: isEmergency && (c.dataFiduciary.toLowerCase() !== normalizedDoctor)
                                     });
                                 }
                             });
@@ -274,18 +285,17 @@ const DoctorDashboard = ({
                     });
                     setLinkedRecords(linked);
 
-                    // --- NEW: Fetch pending requests sent by this doctor to this patient ---
+                    // Fetch pending requests sent by this doctor to this patient
                     const pendingRequests = await consentReadContract.getPendingRequests(targetWallet);
-                    const sentByMe = pendingRequests.filter(r => r.provider.toLowerCase() === normalizedDoctor);
-                    setPendingSentRequests(sentByMe);
+                    pendingRequestsByMe = pendingRequests.filter(r => r.provider.toLowerCase() === normalizedDoctor);
+                    setPendingSentRequests(pendingRequestsByMe);
                 }
 
-                if (formatted.length === 0 && linkedRecords.length === 0 && pendingSentRequests.length === 0) {
-                    toast.warning("No records or pending requests found for this patient.");
+                if (formatted.length === 0 && linked.length === 0) {
+                    toast.warning(isEmergency ? "No clinical records found for this identity even in Emergency mode." : "No records or pending requests found.");
                 } else {
-                    toast.success(`Synced dashboard for patient.`);
+                    toast.success(isEmergency ? "Emergency full history aggregated!" : `Synced dashboard for patient.`);
                 }
-
             } else {
                 toast.error("MedicalRecords contract not loaded");
             }
@@ -724,10 +734,9 @@ const DoctorDashboard = ({
                                     if (!patientWallet || !emergencyJustification || !attendingName) return toast.error("Required fields missing");
                                     const success = await onEmergencyAccess(patientWallet, emergencyJustification, attendingName);
                                     if (success) {
-                                        setShowEmergencyModal(false);
                                         setEmergencyJustification("");
                                         setAttendingName("");
-                                        fetchAuthorizedRecords();
+                                        fetchAuthorizedRecords(true);
                                     }
                                 }}>
                                     Initiate Emergency Access
