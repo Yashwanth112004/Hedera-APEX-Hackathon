@@ -55,20 +55,19 @@ const InsuranceDashboard = ({ account, consentContract, auditLogContract, access
         if (!consentContract || !account) return;
         setLoading(true);
         try {
-            const provider = new ethers.BrowserProvider(window.ethereum);
-            const readAudit = auditLogContract.connect(provider);
+            const readAudit = auditLogContract;
 
             // 1. Fetch Audit Logs from Hedera
             try {
                 const logs = await readAudit.getLogs();
                 const filtered = logs
-                    .filter(l => l.dataFiduciary.toLowerCase() === account.toLowerCase())
+                    .filter(l => l?.dataFiduciary?.toLowerCase() === account?.toLowerCase())
                     .map((l, i) => ({
                         id: i,
-                        principal: l.dataPrincipal,
-                        action: l.action,
-                        purpose: l.purpose,
-                        time: new Date(Number(l.timestamp) * 1000).toLocaleString()
+                        principal: l?.dataPrincipal || 'Unknown',
+                        action: l?.action || 'Event',
+                        purpose: l?.purpose || 'Audit Entry',
+                        time: l?.timestamp ? new Date(Number(l.timestamp) * 1000).toLocaleString() : 'N/A'
                     }))
                     .reverse();
                 setAccessLogs(filtered);
@@ -82,20 +81,30 @@ const InsuranceDashboard = ({ account, consentContract, auditLogContract, access
                 const filter = readAudit.filters.AccessRequested(null, account);
                 const events = await readAudit.queryFilter(filter, -10000);
                 ledgerRequests = events.map((ev, idx) => {
-                    const purpose = ev.args[2];
+                    const purpose = ev?.args?.[2] || "Access Request";
                     const amountMatch = purpose.match(/\| Amount: ([0-9.]+)/);
                     return {
-                        id: ev.args[3].toString() || idx.toString(), // Use Hedera timestamp as unique ID if possible
-                        patient: ev.args[0],
+                        id: ev?.args?.[3]?.toString() || idx.toString(), 
+                        patient: ev?.args?.[0] || 'Unknown',
                         purpose: purpose,
                         amount: amountMatch ? amountMatch[1] : null,
-                        timestamp: Number(ev.args[3]),
-                        time: new Date(Number(ev.args[3]) * 1000).toLocaleString(),
+                        timestamp: Number(ev?.args?.[3] || 0),
+                        time: ev?.args?.[3] ? new Date(Number(ev.args[3]) * 1000).toLocaleString() : 'N/A',
                         status: 'Ledger Verified'
                     };
                 });
             } catch (evErr) {
                 console.warn("Ledger event sync error", evErr);
+            }
+
+            // 2b. Fetch Proactive Consents (Direct from Ledger)
+            let proactivePatients = [];
+            try {
+                const grantFilter = readAudit.filters.ConsentGranted(null, account);
+                const grantEvents = await readAudit.queryFilter(grantFilter, -10000);
+                proactivePatients = grantEvents.map(ev => ev.args?.[0]);
+            } catch (pErr) {
+                console.warn("Proactive consent discovery error", pErr);
             }
 
             setAllRequests(ledgerRequests.reverse());
@@ -104,35 +113,35 @@ const InsuranceDashboard = ({ account, consentContract, auditLogContract, access
             try {
                 const patientsToTry = new Set([
                     ...ledgerRequests.map(r => r.patient?.toLowerCase() || r.patientId?.toLowerCase()),
-                    ...accessLogs.map(l => l.principal.toLowerCase())
+                    ...accessLogs.map(l => l.principal.toLowerCase()),
+                    ...proactivePatients.map(p => p.toLowerCase())
                 ]);
 
                 const records = [];
                 for (const p of patientsToTry) {
                     if (!p) continue;
                     try {
-                        const cons = await getSafePatientConsents(consentContract, p, consentContract.target, provider);
+                        const cons = await getSafePatientConsents(consentContract, p, consentContract.target, auditLogContract.runner.provider);
                         
                         // Fetch the actual records from the contract to get bill amounts
                         let patientRecords = [];
                         if (medicalRecordsContract) {
                             try {
-                                const medRead = medicalRecordsContract.connect(provider);
-                                patientRecords = await medRead.getPatientRecords(p);
+                                patientRecords = await medicalRecordsContract.getPatientRecords(p);
                             } catch (e) {
                                 console.warn(`Could not fetch records for ${p}:`, e.message);
                             }
                         }
 
-                        cons.forEach(c => {
-                            if (c.dataFiduciary.toLowerCase() === account.toLowerCase() && c.isActive && Number(c.expiry) > Date.now() / 1000) {
-                                if (c.dataHash) {
+                        (cons || []).forEach(c => {
+                            if (c?.dataFiduciary?.toLowerCase() === account?.toLowerCase() && c?.isActive && Number(c?.expiry || 0) > Date.now() / 1000) {
+                                if (c?.dataHash) {
                                     const cids = c.dataHash.split(',');
                                     cids.forEach(cid => {
                                         const trimmedCid = cid.trim();
                                         if (trimmedCid) {
                                             // Match with patientRecords to find billAmount
-                                            const match = patientRecords.find(pr => pr.cid === trimmedCid);
+                                            const match = (patientRecords || []).find(pr => pr?.cid === trimmedCid);
                                             records.push({
                                                 patient: p,
                                                 purpose: c.purpose,
@@ -156,18 +165,18 @@ const InsuranceDashboard = ({ account, consentContract, auditLogContract, access
                 // If a patient granted consent with "Insurance Claim Filing" in the purpose,
                 // auto-detect it as a "Claim" if not already tracked.
                 const newAutoClaims = [];
-                records.forEach(r => {
-                    const p = (r.purpose || "").toLowerCase();
+                (records || []).forEach(r => {
+                    const p = (r?.purpose || "").toLowerCase();
                     if (p.includes('insurance claim filing')) {
                         // Check if we already have this claim tracked (by CID)
-                        const exists = claims.find(c => c.cid === r.cid);
+                        const exists = (claims || []).find(c => c?.cid === r?.cid);
                         if (!exists) {
                             newAutoClaims.push({
-                                id: `AUTO-${r.cid.slice(0, 8)}-${Date.now() % 10000}`,
-                                patient: r.patient,
-                                cid: r.cid,
+                                id: `AUTO-${r?.cid?.slice(0, 8) || 'N/A'}-${Date.now() % 10000}`,
+                                patient: r?.patient,
+                                cid: r?.cid,
                                 status: 'Waiting for Disburse',
-                                amount: r.billAmount ? r.billAmount.toString() : '0',
+                                amount: r?.billAmount ? r.billAmount.toString() : '0',
                                 time: new Date().toLocaleString()
                             });
                         }
@@ -339,7 +348,7 @@ const InsuranceDashboard = ({ account, consentContract, auditLogContract, access
                 const logTx = await auditWithSigner.logDataAccessed(
                     patientWallet,
                     account,
-                    `[DISBURSEMENT] Final Amount: ₹${finalAmount} for Claim ${claim.id}`,
+                    `[DISBURSEMENT] ₹${finalAmount} for Claim ${claim.id} (CID: ${claim.cid})`,
                     Math.floor(Date.now() / 1000),
                     { gasLimit: 1000000 }
                 );
@@ -567,17 +576,17 @@ const InsuranceDashboard = ({ account, consentContract, auditLogContract, access
                                     </tr>
                                 </thead>
                                 <tbody>
-                                    {allRequests.length === 0 ? (
+                                    {(!allRequests || allRequests.length === 0) ? (
                                         <tr><td colSpan="5" style={{ textAlign: 'center', padding: '3rem', color: 'var(--text-muted)' }}>No requests sent yet. Use the 'Request' tab to begin.</td></tr>
                                     ) : (
                                         allRequests.map(r => {
-                                            const hasEvidence = r.purpose.includes('| Evidence:');
+                                            const hasEvidence = r?.purpose?.includes('| Evidence:');
                                             const evidenceCIDs = hasEvidence ? r.purpose.split('| Evidence: ')[1].split(', ') : [];
-                                            const isVerified = verifiedClaimIds.includes(r.id.toString());
+                                            const isVerified = (verifiedClaimIds || []).includes(r?.id?.toString());
 
                                             return (
-                                                <tr key={r.id}>
-                                                    <td style={{ fontFamily: 'monospace', fontSize: '0.85rem' }}>{r.patient.slice(0, 16)}...</td>
+                                                <tr key={r?.id || Math.random()}>
+                                                    <td style={{ fontFamily: 'monospace', fontSize: '0.85rem' }}>{r?.patient?.slice(0, 16) || 'N/A'}...</td>
                                                     <td style={{ fontSize: '0.9rem' }}>
                                                          <div style={{ fontWeight: '600', color: 'var(--medical-primary)' }}>
                                                              {r.purpose.split(' | ')[0]}

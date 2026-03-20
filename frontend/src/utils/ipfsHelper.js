@@ -8,6 +8,27 @@ const PINATA_JWT = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySW5mb3JtYXRpb24
 const DEMO_SECRET_KEY = 'dpdp-healthcare-secret-key-2026';
 
 /**
+ * Local Storage Vault for large files (Fallback for Pinata 413)
+ */
+const saveToLocalVault = (payload, name) => {
+    const localCid = `local-pdf-${Math.random().toString(36).substring(2, 11)}-${Date.now()}`;
+    const vault = JSON.parse(localStorage.getItem('hedera_hc_local_vault') || '{}');
+    vault[localCid] = {
+        payload: payload,
+        name: name,
+        timestamp: Date.now()
+    };
+    try {
+        localStorage.setItem('hedera_hc_local_vault', JSON.stringify(vault));
+        console.info(`Saved large payload to local vault: ${localCid}`);
+        return localCid;
+    } catch (e) {
+        console.error("Local Storage is full! Cannot save record.", e);
+        throw new Error("Local Storage is full. Please clear old records.");
+    }
+};
+
+/**
  * Encrypts a JSON payload symmetrically
  * @param {Object} data - The medical data to encrypt
  * @returns {string} - AES encrypted string
@@ -100,6 +121,10 @@ export const uploadToPinata = async (encryptedPayload, name = "Medical Record") 
         );
         return res.data.IpfsHash;
     } catch (error) {
+        if (error.response?.status === 413) {
+            console.warn("Payload too large for Pinata JSON API. Falling back to local vault.");
+            return saveToLocalVault(encryptedPayload, name);
+        }
         console.error("Error uploading to Pinata:", error);
         throw new Error("Failed to upload to IPFS network");
     }
@@ -111,6 +136,16 @@ export const uploadToPinata = async (encryptedPayload, name = "Medical Record") 
  * @returns {Promise<string>} - The encrypted payload string
  */
 export const fetchFromPinata = async (cid) => {
+    // Check if it's a local vault record
+    if (cid && cid.startsWith('local-')) {
+        const vault = JSON.parse(localStorage.getItem('hedera_hc_local_vault') || '{}');
+        if (vault[cid]) {
+            console.info(`Retrieved record from local vault: ${cid}`);
+            return vault[cid].payload;
+        }
+        throw new Error("Local record not found in this browser vault");
+    }
+
     try {
         // Using Pinata's public gateway for retrieval. Ideally use a dedicated gateway.
         const res = await axios.get(`https://gateway.pinata.cloud/ipfs/${cid}`);

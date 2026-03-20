@@ -10,6 +10,7 @@ import { getSafePendingRequests, safeApproveRequest } from '../utils/consentHelp
 
 const PatientDashboard = ({
   account,
+  hapiProvider,
   consents,
   onGrantConsent,
   onRevokeConsent,
@@ -20,9 +21,16 @@ const PatientDashboard = ({
   consentContract, // Needed to fetch/approve requests directly
   medicalRecordsContract,
   walletMapperContract,
-  rbacContract
+  rbacContract,
+  registryContract,
+  auditLogContract,
+  accessContract,
+  onEraseConsent,
+  monitorAccessSpam
 }) => {
   const [activeTab, setActiveTab] = useState('beneficiaries');
+  const [showDiagnostic, setShowDiagnostic] = useState(false);
+  const [diagnosticLog, setDiagnosticLog] = useState([]);
   const [highRequesterMap, setHighRequesterMap] = useState({});
   const [showGrantForm, setShowGrantForm] = useState(false);
   const [showQR, setShowQR] = useState(false);
@@ -73,66 +81,77 @@ const PatientDashboard = ({
   const [claimTarget, setClaimTarget] = useState({ provider: '', cid: '', amount: '' });
 
   // Fetch On-Chain Data
+  const loadPatientData = React.useCallback(async () => {
+    if (!account) return;
+    const normalizedAccount = normalizeAddress(account);
+    const diag = (msg) => setDiagnosticLog(prev => [...prev.slice(-19), `${new Date().toLocaleTimeString()}: ${msg}`]);
+    diag(`Syncing for ${normalizedAccount}...`);
+
+    // Use hapiProvider for high-reliability read-only operations
+    const readProvider = hapiProvider || new ethers.BrowserProvider(window.ethereum);
+
+    if (medicalRecordsContract) {
+      try {
+        diag(`Fetching MedicalRecords at ${medicalRecordsContract.target}...`);
+        const readOnlyRecords = medicalRecordsContract.connect(readProvider);
+        const records = await readOnlyRecords.getPatientRecords(normalizedAccount);
+        diag(`Found ${records.length} clinical records.`);
+        setMyRecords(records);
+
+        const allPrescriptions = await readOnlyRecords.getPendingPrescriptions();
+        const filteredRx = allPrescriptions
+          .filter(rx => normalizeAddress(rx.patient) === normalizedAccount)
+          .map(rx => ({ ...rx, isDispensed: rx.isDispensed }));
+        diag(`Found ${filteredRx.length} prescriptions.`);
+        setMyPrescriptions(filteredRx);
+      } catch (err) {
+        diag(`ERROR Records: ${err.message}`);
+        console.error("Could not fetch MedicalRecords:", err);
+        toast.error("Failed to load clinical history from chain.");
+      }
+    }
+    if (consentContract) {
+      try {
+        diag(`Checking ConsentManager at ${consentContract.target}...`);
+        const readOnlyConsent = consentContract.connect(readProvider);
+        const requests = await getSafePendingRequests(readOnlyConsent, normalizedAccount, consentContract.target, readProvider);
+        diag(`Fetched ${requests?.length || 0} pending requests.`);
+        setPendingRequests(requests || []);
+      } catch (err) {
+        diag(`ERROR Requests: ${err.message}`);
+        console.error("Could not fetch Pending Requests", err);
+      }
+    }
+    if (walletMapperContract) {
+      try {
+        diag(`Resolving Short ID via ${walletMapperContract.target}...`);
+        const readOnlyMapper = walletMapperContract.connect(readProvider);
+        const id = await readOnlyMapper.getShortIDFromWallet(normalizedAccount);
+        diag(`Identity: ${id || 'No Short ID'}`);
+        if (id) setShortId(id);
+      } catch (err) { diag(`ERROR Mapper: ${err.message}`); console.error("Could not fetch Short ID"); }
+    }
+    if (auditLogContract) {
+      try {
+        diag(`Fetching AuditLog at ${auditLogContract.target}...`);
+        const readOnlyAudit = auditLogContract.connect(readProvider);
+        const logs = await readOnlyAudit.getLogs();
+        const myLogs = (logs || []).filter(l => normalizeAddress(l.dataPrincipal) === normalizedAccount);
+        setAuditLogs(myLogs.reverse());
+      } catch (err) {
+        diag(`ERROR Audit: ${err.message}`);
+        console.error("Could not fetch Audit Logs");
+      }
+    }
+  }, [account, medicalRecordsContract, consentContract, walletMapperContract, auditLogContract, hapiProvider]);
+
   React.useEffect(() => {
-    const loadPatientData = async () => {
-      if (!account) return;
-      const normalizedAccount = normalizeAddress(account);
-
-      const provider = new ethers.BrowserProvider(window.ethereum);
-
-      if (medicalRecordsContract) {
-        try {
-          const recordsReadContract = medicalRecordsContract.connect(provider);
-          const records = await recordsReadContract.getPatientRecords(normalizedAccount);
-          setMyRecords(records);
-
-          // Fetch Global Prescription Queue and filter by patient wallet
-          const allPrescriptions = await recordsReadContract.getPendingPrescriptions();
-          const filteredRx = allPrescriptions.filter(rx => normalizeAddress(rx.patient) === normalizedAccount);
-          setMyPrescriptions(filteredRx);
-        } catch { console.error("Could not fetch MedicalRecords"); }
-      }
-      if (consentContract) {
-        try {
-          const consentReadContract = consentContract.connect(provider);
-          const requests = await getSafePendingRequests(consentReadContract, normalizedAccount, consentContract.target, provider);
-          setPendingRequests(requests || []);
-
-          // Direct consent fetch as fallback diagnostic
-          // If the parent consents prop is empty, fetch directly and log
-          try {
-            const directConsents = await consentReadContract.getPatientConsents(normalizedAccount);
-            console.log("[PatientDashboard] Direct consent fetch for", normalizedAccount, ":", directConsents.length, "found");
-            if (directConsents.length > 0) {
-              console.log("[PatientDashboard] Consent entries:", directConsents.map((c, i) => ({
-                idx: i,
-                fiduciary: c.dataFiduciary,
-                isActive: c.isActive,
-                expiry: Number(c.expiry),
-                purpose: c.purpose
-              })));
-            }
-          } catch (directErr) {
-            console.warn("[PatientDashboard] Direct consent fetch failed:", directErr.message);
-          }
-        } catch (err) {
-          console.error("Could not fetch Pending Requests", err);
-        }
-      }
-      if (walletMapperContract) {
-        try {
-          const mapperReadContract = walletMapperContract.connect(provider);
-          const id = await mapperReadContract.getShortIDFromWallet(normalizedAccount);
-          if (id) setShortId(id);
-        } catch { console.error("Could not fetch Short ID"); }
-      }
-    };
-
     loadPatientData();
-
-    const saved = JSON.parse(localStorage.getItem(`beneficiaries_${account}`) || '[]');
-    setBeneficiaries(saved);
-  }, [medicalRecordsContract, consentContract, walletMapperContract, account, consents]);
+    try {
+      const saved = JSON.parse(localStorage.getItem(`beneficiaries_${account}`) || '[]');
+      setBeneficiaries(saved);
+    } catch (e) { setBeneficiaries([]); }
+  }, [loadPatientData, account, consents]);
 
   // Polling & Focus Sync (Ensure requests reflect real-time provider activity)
   React.useEffect(() => {
@@ -140,10 +159,10 @@ const PatientDashboard = ({
     const syncData = async () => {
       if (!account || !consentContract) return;
       const normalizedAccount = normalizeAddress(account);
-      const provider = new ethers.BrowserProvider(window.ethereum);
-      const consentReadContract = consentContract.connect(provider);
+      const readProvider = hapiProvider || new ethers.BrowserProvider(window.ethereum);
       try {
-        const requests = await getSafePendingRequests(consentReadContract, normalizedAccount, consentContract.target, provider);
+        const readOnlyConsent = consentContract.connect(readProvider);
+        const requests = await getSafePendingRequests(readOnlyConsent, normalizedAccount, consentContract.target, readProvider);
         setPendingRequests(requests || []);
 
         // SILENT TRACKING PROTECTION (DPDP SAFEGUARD)
@@ -164,13 +183,15 @@ const PatientDashboard = ({
     };
 
     window.addEventListener('focus', syncData);
+    window.addEventListener('sync-patient-data', loadPatientData);
     interval = setInterval(syncData, 30000); // Poll every 30s
 
     return () => {
       window.removeEventListener('focus', syncData);
+      window.removeEventListener('sync-patient-data', loadPatientData);
       if (interval) clearInterval(interval);
     };
-  }, [account, consentContract]);
+  }, [account, consentContract, medicalRecordsContract, walletMapperContract]);
 
   const saveBeneficiaries = (newBeneficiaries) => {
     setBeneficiaries(newBeneficiaries);
@@ -282,18 +303,17 @@ const PatientDashboard = ({
   };
 
   const loadAuditLogs = async () => {
-    if (!account || !consentContract) return;
+    if (!account || !auditLogContract) return;
     try {
       const provider = new ethers.BrowserProvider(window.ethereum);
-      const auditContract = new ethers.Contract("0x9655adB44dfe57AF56a2fa26Dff7dB7C57280D10", [
-        "function getLogs() view returns (tuple(address dataPrincipal, address dataFiduciary, string action, string purpose, uint256 timestamp)[])"
-      ], provider);
-      const logs = await auditContract.getLogs();
+      const readAudit = auditLogContract.connect(provider);
+      const logs = await readAudit.getLogs();
       const normalizedAccount = normalizeAddress(account);
-      const myLogs = logs.filter(l => normalizeAddress(l.dataPrincipal) === normalizedAccount);
+      const myLogs = (logs || []).filter(l => normalizeAddress(l.dataPrincipal) === normalizedAccount);
       setAuditLogs(myLogs.reverse());
       setShowAuditLogs(true);
     } catch (err) {
+      console.error("Failed to load audit logs:", err);
       toast.error("Failed to load audit logs");
     }
   };
@@ -574,11 +594,30 @@ const PatientDashboard = ({
 
   // Updated icons to use emojis more fitting the vibrant theme or generic texts
   const dashboardCards = [
-    { title: 'My Health Records', value: myRecords.length, icon: '📋', color: 'var(--medical-primary)' },
-    { title: 'Active Prescriptions', value: myPrescriptions.length, icon: '💊', color: 'var(--medical-teal)' },
-    { title: 'Active Consents', value: consents.filter(c => c.isActive).length, icon: '✅', color: 'var(--status-approved)' },
-    { title: 'Pending Requests', value: pendingRequests.length, icon: '⏳', color: 'var(--status-pending)' }
+    { title: 'My Health Records', value: (myRecords || []).length, icon: '📋', color: 'var(--medical-primary)' },
+    { title: 'Active Prescriptions', value: (myPrescriptions || []).filter(p => !p.isDispensed).length, icon: '💊', color: 'var(--medical-teal)' },
+    { title: 'Active Consents', value: (consents || []).filter(c => c?.isActive).length, icon: '✅', color: 'var(--status-approved)' },
+    { title: 'Pending Requests', value: (pendingRequests || []).length, icon: '⏳', color: 'var(--status-pending)' }
   ];
+
+  // Helper to check if a CID has been submitted for insurance claim
+  const isClaimed = (cid) => {
+    if (!cid) return false;
+    return (consents || []).some(c =>
+      c.isActive &&
+      (c.purpose || "").toLowerCase().includes("claim") &&
+      (c.dataHash || "").includes(cid)
+    );
+  };
+
+  // Helper to check if a CID has been disbursed by insurance
+  const isDisbursed = (cid) => {
+    if (!cid || !auditLogs) return false;
+    return auditLogs.some(log => 
+      (log.action || "").includes("[DISBURSEMENT]") && 
+      (log.action || "").includes(cid)
+    );
+  };
 
   return (
     <div className="patient-dashboard animate-fade-in">
@@ -697,24 +736,24 @@ const PatientDashboard = ({
 
       <div className="dashboard-section glass-panel">
         <h3>Inbound Access Requests</h3>
-        {pendingRequests.length === 0 ? (
+        {(!Array.isArray(pendingRequests) || pendingRequests.length === 0) ? (
           <p style={{ color: 'var(--text-muted)', textAlign: 'center', padding: '2rem' }}>No pending requests from providers.</p>
         ) : (
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '1.5rem' }}>
             {pendingRequests.map(req => (
-              <div key={req.id.toString()} className="floating-card" style={{ borderColor: 'var(--medical-primary)40' }}>
+              <div key={req?.id?.toString() || Math.random()} className="floating-card" style={{ borderColor: 'var(--medical-primary)40' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '0.75rem' }}>
-                  <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', textTransform: 'uppercase' }}>Provider: {req.provider.slice(0, 8)}...{req.provider.slice(-4)}</div>
-                  {highRequesterMap[req.provider.toLowerCase()] && (
+                  <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', textTransform: 'uppercase' }}>Provider: {req?.provider?.slice(0, 8)}...{req?.provider?.slice(-4)}</div>
+                  {req?.provider && highRequesterMap[req.provider.toLowerCase()] && (
                     <span style={{ fontSize: '0.65rem', background: '#FEF2F2', color: '#EF4444', padding: '0.2rem 0.5rem', borderRadius: '4px', border: '1px solid #FCA5A5' }}>
                       ⚠️ Frequent Requester
                     </span>
                   )}
                 </div>
-                <h4 style={{ marginBottom: '1.5rem', fontSize: '1.1rem' }}>{req.purpose}</h4>
+                <h4 style={{ marginBottom: '1.5rem', fontSize: '1.1rem' }}>{req?.purpose || "Clinical Access Request"}</h4>
                 <div style={{ display: 'flex', gap: '1rem' }}>
                   <button className="primary-btn" style={{ flex: 1 }} onClick={() => handleApproveRequest(req)}>Approve</button>
-                  <button className="secondary-btn" style={{ flex: 1, color: '#EF4444', borderColor: '#EF444420' }} onClick={() => handleRejectRequest(req.id)}>Reject</button>
+                  <button className="secondary-btn" style={{ flex: 1, color: '#EF4444', borderColor: '#EF444420' }} onClick={() => handleRejectRequest(req?.id)}>Reject</button>
                 </div>
               </div>
             ))}
@@ -812,9 +851,9 @@ const PatientDashboard = ({
                   </tr>
                 </thead>
                 <tbody>
-                  {consents.map((c, i) => (
+                  {(consents || []).map((c, i) => (
                     <tr key={i}>
-                      <td>{c.dataFiduciary.slice(0, 10)}...</td>
+                      <td>{c.dataFiduciary?.slice(0, 10)}...</td>
                       <td>Erasure Request</td>
                       <td>
                         <span className="role-badge" style={{ background: '#F1F5F9', color: '#64748B' }}>Unsent</span>
@@ -852,10 +891,10 @@ const PatientDashboard = ({
                 </tr>
               </thead>
               <tbody>
-                {consents
+                {(consents || [])
                   .map((c, i) => ({ ...c, originalIndex: i }))
                   .filter(consent => {
-                    const isExpired = Number(consent.expiry) < Date.now() / 1000;
+                    const isExpired = Number(consent.expiry || 0) < Date.now() / 1000;
                     if (consentTab === 'active') return consent.isActive && !isExpired;
                     return !consent.isActive || isExpired;
                   })
@@ -925,6 +964,17 @@ const PatientDashboard = ({
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
           <div>
             <h3>Master Health Records</h3>
+            <button
+              className="secondary-btn"
+              onClick={() => {
+                const event = new CustomEvent('sync-patient-data');
+                window.dispatchEvent(event);
+                toast.info("Refreshing records...");
+              }}
+              style={{ fontSize: '0.7rem', padding: '0.2rem 0.5rem', marginLeft: '1rem' }}
+            >
+              🔄 Refresh Records
+            </button>
             <p style={{ fontSize: '0.9rem', color: 'var(--text-secondary)' }}>
               All secure medical data cryptographically linked to your identity.
             </p>
@@ -957,7 +1007,7 @@ const PatientDashboard = ({
               <tbody>
                 {/* Consolidate both records and prescriptions */}
                 {[
-                  ...myRecords.map(r => ({
+                  ...(myRecords || []).map(r => ({
                     id: r.id,
                     patient: r.patient,
                     provider: r.provider,
@@ -967,73 +1017,92 @@ const PatientDashboard = ({
                     billAmount: r.billAmount,
                     category: 'Record'
                   })),
-                  ...myPrescriptions.map(p => ({
+                  ...(myPrescriptions || []).map(p => ({
                     id: p.recordId,
                     patient: p.patient,
                     patientName: p.patientName,
                     cid: p.cid,
                     recordType: 'Prescription',
                     billAmount: p.billAmount,
-                    category: 'Prescription'
+                    category: 'Prescription',
+                    isDispensed: p.isDispensed
                   }))
-                ].sort((a, b) => Number(b.timestamp || 0) - Number(a.timestamp || 0)).map((item, i) => (
-                  <tr key={i}>
-                    <td>
-                      <span style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                        <span>{item.category === 'Prescription' ? '💊' : '📄'}</span>
-                        {item.recordType}
-                      </span>
-                    </td>
-                    <td>
-                      <div style={{ fontSize: '0.85rem' }}>
-                        {item.category === 'Prescription' ? `RX #${item.id.toString()}` : `From: ${item.provider.slice(0, 6)}...${item.provider.slice(-4)}`}
-                      </div>
-                    </td>
-                    <td>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                        <code style={{ color: 'var(--text-secondary)', fontSize: '0.8rem' }}>
-                          {item.cid?.slice(0, 8) || "N/A"}...
-                        </code>
-                        <button
-                          onClick={() => { navigator.clipboard.writeText(item.cid); toast.success("CID copied!"); }}
-                          style={{ background: 'transparent', border: 'none', cursor: 'pointer', opacity: 0.6 }}
-                          title="Copy Full CID"
-                        >
-                          📋
-                        </button>
-                      </div>
-                    </td>
-                    <td>
-                      <span style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
-                        {item.timestamp ? new Date(Number(item.timestamp) * 1000).toLocaleDateString() : 'N/A'}
-                      </span>
-                    </td>
-                    <td>
-                      <div style={{ display: 'flex', gap: '0.4rem' }}>
-                        <button
-                          className="primary-btn"
-                          style={{ padding: '0.4rem 0.8rem', fontSize: '0.8rem' }}
-                          onClick={() => handleDecryptRecord(item.cid)}
-                          disabled={isDecrypting && ipfsCid === item.cid}
-                        >
-                          {isDecrypting && ipfsCid === item.cid ? "..." : "🔓 View"}
-                        </button>
-                        {item.billAmount && Number(item.billAmount) > 0 && (
+                ].sort((a, b) => Number(b.timestamp || 0) - Number(a.timestamp || 0)).map((item, i) => {
+                  const claimed = isClaimed(item.cid);
+                  const dispensed = item.category === 'Prescription' && item.isDispensed;
+
+                  return (
+                    <tr key={i}>
+                      <td>
+                        <span style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                          <span>{item.category === 'Prescription' ? '💊' : '📄'}</span>
+                          {item.recordType}
+                          {dispensed && <span className="status-badge" style={{ background: '#F1F5F9', color: '#64748B', fontSize: '0.65rem' }}>🏪 Dispensed</span>}
+                        </span>
+                      </td>
+                      <td>
+                        <div style={{ fontSize: '0.85rem' }}>
+                          {item.category === 'Prescription' ? `RX #${item?.id?.toString() || 'N/A'}` : `From: ${item?.provider?.slice(0, 6)}...${item?.provider?.slice(-4)}`}
+                        </div>
+                      </td>
+                      <td>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                          <code style={{ color: 'var(--text-secondary)', fontSize: '0.8rem' }}>
+                            {item.cid?.slice(0, 8) || "N/A"}...
+                          </code>
                           <button
-                            className="secondary-btn"
-                            style={{ padding: '0.4rem 0.8rem', fontSize: '0.8rem', background: 'var(--medical-aqua)', color: 'white', border: 'none' }}
-                            onClick={() => {
-                              setClaimTarget({ provider: '', cid: item.cid, amount: item.billAmount.toString() });
-                              setShowClaimModal(true);
-                            }}
+                            onClick={() => { navigator.clipboard.writeText(item.cid); toast.success("CID copied!"); }}
+                            style={{ background: 'transparent', border: 'none', cursor: 'pointer', opacity: 0.6 }}
+                            title="Copy Full CID"
                           >
-                            🏥 Claim (₹{item.billAmount.toString()})
+                            📋
                           </button>
-                        )}
-                      </div>
-                    </td>
-                  </tr>
-                ))}
+                        </div>
+                      </td>
+                      <td>
+                        <span style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
+                          {item.timestamp ? new Date(Number(item.timestamp) * 1000).toLocaleDateString() : 'N/A'}
+                        </span>
+                      </td>
+                      <td>
+                        <div style={{ display: 'flex', gap: '0.4rem' }}>
+                          <button
+                            className="primary-btn"
+                            style={{ padding: '0.4rem 0.8rem', fontSize: '0.8rem' }}
+                            onClick={() => handleDecryptRecord(item.cid)}
+                            disabled={isDecrypting && ipfsCid === item.cid}
+                          >
+                            {isDecrypting && ipfsCid === item.cid ? "..." : "🔓 View"}
+                          </button>
+                          {isDisbursed(item.cid) ? (
+                            <span className="status-badge active" style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', background: '#D1FAE5', color: '#059669', border: 'none' }}>
+                              ✅ Claimed
+                            </span>
+                          ) : isClaimed(item.cid) ? (
+                            <span className="status-badge" style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', background: 'var(--medical-aqua)15', color: 'var(--medical-aqua)', border: '1px solid var(--medical-aqua)40', fontSize: '0.75rem' }}>
+                              ⏳ Processing
+                            </span>
+                          ) : (item.billAmount && Number(item.billAmount) > 0) ? (
+                            <button
+                              className="secondary-btn"
+                              style={{ padding: '0.4rem 0.8rem', fontSize: '0.8rem', background: 'var(--medical-aqua)', color: 'white', border: 'none' }}
+                              onClick={() => {
+                                setClaimTarget({ provider: '', cid: item.cid, amount: item?.billAmount?.toString() || '0' });
+                                setShowClaimModal(true);
+                              }}
+                            >
+                              🏥 Claim (₹{item?.billAmount?.toString() || '0'})
+                            </button>
+                          ) : dispensed ? (
+                            <span className="status-badge" style={{ background: '#F1F5F9', color: '#64748B', fontSize: '0.75rem', border: 'none' }}>
+                              Awaiting Bill
+                            </span>
+                          ) : null}
+                        </div>
+                      </td>
+                    </tr>
+                  )
+                })}
               </tbody>
             </table>
           </div>
@@ -1287,7 +1356,7 @@ const PatientDashboard = ({
                             <span style={{ fontSize: '1.1rem' }}>{item.cat === 'Prescription' ? '💊' : '📄'}</span>
                             <div style={{ display: 'flex', flexDirection: 'column' }}>
                               <span style={{ fontSize: '0.9rem', fontWeight: 'bold' }}>{item.type}</span>
-                              <span style={{ fontSize: '0.7rem', color: 'var(--text-secondary)' }}>Content Hash: {item.cid.slice(0, 8)}...</span>
+                              <span style={{ fontSize: '0.7rem', color: 'var(--text-secondary)' }}>Content Hash: {item.cid?.slice(0, 8) || "N/A"}...</span>
                             </div>
                           </div>
                           <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
@@ -1449,16 +1518,16 @@ const PatientDashboard = ({
                     </tr>
                   </thead>
                   <tbody>
-                    {auditLogs.map((log, i) => (
+                    {(auditLogs || []).map((log, i) => (
                       <tr key={i}>
                         <td>
-                          <span className={`status-badge ${log.action.includes('Granted') ? 'active' : log.action.includes('Revoked') ? 'revoked' : 'pending'}`}>
-                            {log.action}
+                          <span className={`status-badge ${log.action?.includes('Granted') ? 'active' : log.action?.includes('Revoked') ? 'revoked' : 'pending'}`}>
+                            {log.action || "Event"}
                           </span>
                         </td>
-                        <td>{log.dataFiduciary === ethers.ZeroAddress ? <span style={{ color: 'var(--medical-primary)', fontWeight: 'bold' }}>System</span> : <code style={{ background: '#f1f5f9', padding: '2px 6px', borderRadius: '4px', border: '1px solid #cbd5e1', color: '#0f172a' }}>{log.dataFiduciary.slice(0, 8)}...</code>}</td>
-                        <td style={{ fontWeight: '500', color: 'var(--text-main)' }}>{log.purpose}</td>
-                        <td style={{ fontSize: '0.8rem', color: 'var(--text-main)', fontWeight: '600' }}>{new Date(Number(log.timestamp) * 1000).toLocaleString()}</td>
+                        <td>{log.dataFiduciary === ethers.ZeroAddress ? <span style={{ color: 'var(--medical-primary)', fontWeight: 'bold' }}>System</span> : <code style={{ background: '#f1f5f9', padding: '2px 6px', borderRadius: '4px', border: '1px solid #cbd5e1', color: '#0f172a' }}>{log.dataFiduciary?.slice(0, 8) || "N/A"}...</code>}</td>
+                        <td style={{ fontWeight: '500', color: 'var(--text-main)' }}>{log.purpose || "Audit Detail"}</td>
+                        <td style={{ fontSize: '0.8rem', color: 'var(--text-main)', fontWeight: '600' }}>{log.timestamp ? new Date(Number(log.timestamp) * 1000).toLocaleString() : "N/A"}</td>
                       </tr>
                     ))}
                   </tbody>
@@ -1605,7 +1674,7 @@ const PatientDashboard = ({
               }}>
                 <Info size={18} color="var(--medical-aqua)" style={{ flexShrink: 0, marginTop: '2px' }} />
                 <p style={{ color: 'var(--text-main)', fontSize: '0.9rem', lineHeight: '1.6', margin: 0 }}>
-                  This action will proactively authorize your Insurance Provider to access Record CID: <code style={{ color: 'var(--medical-aqua)', fontWeight: 'bold' }}>{claimTarget.cid.slice(0, 10)}...</code> for settlement of <strong>₹{claimTarget.amount}</strong>.
+                  This action will proactively authorize your Insurance Provider to access Record CID: <code style={{ color: 'var(--medical-aqua)', fontWeight: 'bold' }}>{claimTarget.cid?.slice(0, 10) || "N/A"}...</code> for settlement of <strong>₹{claimTarget.amount || '0'}</strong>.
                 </p>
               </div>
 
@@ -1635,15 +1704,19 @@ const PatientDashboard = ({
                   className="primary-btn"
                   style={{ flex: 1, background: 'var(--medical-aqua)', boxShadow: '0 8px 16px -4px rgba(6, 182, 212, 0.3)' }}
                   disabled={!claimTarget.provider}
+
                   onClick={async () => {
                     try {
                       toast.info("Authorizing Insurance Access...");
                       const { resolveWalletAddress } = await import('../utils/idMappingHelper');
                       const insuranceWallet = await resolveWalletAddress(claimTarget.provider, walletMapperContract);
 
+                      // Removed strict Registry fiduciary check because it blocks valid mapped wallets
+                      // that were added via the Admin Dashboard. The backend grantConsent
+                      // will handle actual authorization.
                       await onGrantConsent(
                         insuranceWallet,
-                        `Insurance Claim Filing for CID ${claimTarget.cid.slice(0, 8)}`,
+                        `Insurance Claim Filing for CID ${claimTarget.cid?.slice(0, 8) || "N/A"}`,
                         claimTarget.cid,
                         86400 * 30 // 30 days
                       );
@@ -1665,6 +1738,58 @@ const PatientDashboard = ({
           </div>
         </div>
       )}
+
+      {/* DPDP Diagnostics Overlay */}
+      <div style={{ position: 'fixed', bottom: '20px', right: '20px', zIndex: 1000 }}>
+        <button
+          onClick={() => setShowDiagnostic(!showDiagnostic)}
+          style={{
+            background: showDiagnostic ? 'var(--medical-primary)' : 'rgba(15, 23, 42, 0.8)',
+            color: 'white',
+            border: 'none',
+            borderRadius: '50px',
+            padding: '0.5rem 1rem',
+            fontSize: '0.75rem',
+            boxShadow: '0 4px 12px rgba(0,0,0,0.3)',
+            cursor: 'pointer',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '8px'
+          }}
+        >
+          {showDiagnostic ? 'Close Diag' : '🛠️ Debug Logs'}
+        </button>
+        {showDiagnostic && (
+          <div className="glass-panel" style={{
+            marginTop: '10px',
+            width: '320px',
+            maxHeight: '400px',
+            overflow: 'auto',
+            fontSize: '0.7rem',
+            padding: '1rem',
+            background: 'rgba(15, 23, 42, 0.95)',
+            color: '#94a3b8',
+            border: '1px solid var(--medical-primary)',
+            boxShadow: 'var(--shadow-xl)'
+          }}>
+            <h4 style={{ color: 'white', marginBottom: '8px', borderBottom: '1px solid #334155', paddingBottom: '4px' }}>System Diagnostics</h4>
+            <div style={{ marginBottom: '10px' }}>
+              <div><strong>Account:</strong> <span style={{ color: '#38bdf8' }}>{account}</span></div>
+              <div><strong>RPC:</strong> <span style={{ color: '#4ade80' }}>Hashio Direct</span></div>
+              <div><strong>Contracts:</strong> <span style={{ color: medicalRecordsContract ? '#4ade80' : '#f87171' }}>{medicalRecordsContract ? 'Loaded' : 'Missing'}</span></div>
+            </div>
+            <div style={{ fontFamily: 'monospace' }}>
+              {diagnosticLog.map((log, i) => <div key={i} style={{ marginBottom: '2px', borderBottom: '1px solid #1e293b' }}>{log}</div>)}
+            </div>
+            <button
+              onClick={() => { navigator.clipboard.writeText(JSON.stringify({ account, diagnosticLog }, null, 2)); toast.success("Copied to clipboard!"); }}
+              style={{ width: '100%', marginTop: '10px', background: '#334155', border: 'none', color: 'white', padding: '4px', borderRadius: '4px', cursor: 'pointer' }}
+            >
+              Copy Technical Report
+            </button>
+          </div>
+        )}
+      </div>
     </div>
   );
 };

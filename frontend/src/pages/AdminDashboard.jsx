@@ -14,7 +14,7 @@ const roleABI = [
   "function isAdmin(address user) view returns (bool)"
 ];
 
-export default function AdminDashboard({ account, rbacContract, walletMapperContract }) {
+export default function AdminDashboard({ account, rbacContract, registryContract, walletMapperContract }) {
 
   const [pendingRequests, setPendingRequests] = useState([]);
   const [activeRoles, setActiveRoles] = useState([]);
@@ -32,10 +32,9 @@ export default function AdminDashboard({ account, rbacContract, walletMapperCont
       const localReqs = JSON.parse(localStorage.getItem('dpdp_role_requests') || '[]');
       setPendingRequests(localReqs.filter(r => r.status === 'pending'));
 
-      // Role discovery logic: 
       // 1. Wallets from local requests
       // 2. Any hardcoded/known wallets
-      const uniqueWallets = [...new Set([...localReqs.map(r => r.wallet), HARDCODED_ADMIN])];
+      const uniqueWallets = [...new Set([...(localReqs || []).map(r => r?.wallet), HARDCODED_ADMIN])];
       const active = [];
 
       for (const rawWallet of uniqueWallets) {
@@ -56,12 +55,26 @@ export default function AdminDashboard({ account, rbacContract, walletMapperCont
 
           if (Number(roleId) !== 0) {
             // Find organization name from local requests if available
-            const matchingReq = localReqs.find(r => r.wallet.toLowerCase() === safeWallet.toLowerCase());
+            const matchingReq = (localReqs || []).find(r => r?.wallet?.toLowerCase() === safeWallet.toLowerCase());
+            const isRegistryApproved = registryContract ? await registryContract.isApproved(safeWallet) : false;
             active.push({ 
               wallet: safeWallet, 
               roleId: Number(roleId),
-              orgName: matchingReq ? matchingReq.orgName : "Verified Provider"
+              orgName: matchingReq ? matchingReq.orgName : "Verified Provider",
+              onBlockchain: true,
+              isRegistryApproved
             });
+          } else {
+            // Check if it's a locally approved request not yet on blockchain
+            const localMapping = (localReqs || []).find(r => r?.wallet?.toLowerCase() === safeWallet.toLowerCase() && r.status === 'approved');
+            if (localMapping) {
+              active.push({
+                wallet: safeWallet,
+                roleId: Number(localMapping.roleId),
+                orgName: localMapping.orgName,
+                onBlockchain: false
+              });
+            }
           }
         } catch (e) {
           console.warn("Could not fetch role, invalid address format:", rawWallet);
@@ -118,19 +131,33 @@ export default function AdminDashboard({ account, rbacContract, walletMapperCont
       toast.info(`Mapping ${req.orgName} to role ${getRoleName(req.roleId)}...`);
 
       let tx;
+      let blockchainSuccess = false;
       try {
         console.log("Attempting mapping on Primary RBAC:", RBAC_ADDRESS);
         tx = await contract.registerRole(safeWallet, Number(req.roleId), { gasLimit: 1000000 });
         await tx.wait();
+        blockchainSuccess = true;
       } catch (primaryErr) {
         console.warn("Primary RBAC failed (or reverted), attempting LEGACY fallback...", primaryErr.message);
         if (primaryErr.message.toLowerCase().includes("user rejected")) throw primaryErr;
         
-        const legacyContract = new ethers.Contract(LEGACY_RBAC, roleABI, signer);
-        tx = await legacyContract.registerRole(safeWallet, Number(req.roleId), { gasLimit: 1000000 });
-        await tx.wait();
+        try {
+            const legacyContract = new ethers.Contract(LEGACY_RBAC, roleABI, signer);
+            tx = await legacyContract.registerRole(safeWallet, Number(req.roleId), { gasLimit: 1000000 });
+            await tx.wait();
+            blockchainSuccess = true;
+        } catch (legacyErr) {
+            console.error("Legacy RBAC also failed:", legacyErr);
+            // If it's a revert or CALL_EXCEPTION, it's likely an auth issue
+            if (legacyErr.code === "CALL_EXCEPTION" || legacyErr.message.includes("reverted")) {
+                 toast.warning("Blockchain mapping skipped: Wallet is not a registered Admin on this contract.", { autoClose: 10000 });
+            } else {
+                 throw legacyErr;
+            }
+        }
       }
 
+      // Update local storage regardless of blockchain success for prototype fluidity
       const localReqs = JSON.parse(localStorage.getItem('dpdp_role_requests') || '[]');
       const updatedReqs = localReqs.map(r =>
         (r.wallet.toLowerCase() === req.wallet.toLowerCase() && r.timestamp === req.timestamp)
@@ -140,6 +167,24 @@ export default function AdminDashboard({ account, rbacContract, walletMapperCont
       localStorage.setItem('dpdp_role_requests', JSON.stringify(updatedReqs));
 
       toast.success("Role successfully mapped on blockchain");
+
+      // NEW: Also approve in Registry if it's a fiduciary role (1-5)
+      if (registryContract && [1, 2, 3, 4, 5].includes(Number(req.roleId))) {
+        try {
+          const provider = new ethers.BrowserProvider(window.ethereum);
+          const signer = await provider.getSigner();
+          const regWithSigner = registryContract.connect(signer);
+          
+          toast.info(`Approving ${req.orgName} in DPDP Registry...`);
+          const regTx = await regWithSigner.approveFiduciary(safeWallet, { gasLimit: 1000000 });
+          await regTx.wait();
+          toast.success("Organization approved in DPDP Network Registry");
+        } catch (regErr) {
+          console.error("Registry approval failed:", regErr);
+          toast.warning("Role mapped, but Registry approval failed. You may need to approve manually.");
+        }
+      }
+
       loadData();
     } catch (err) {
       console.error("Mapping failed:", err);
@@ -151,6 +196,27 @@ export default function AdminDashboard({ account, rbacContract, walletMapperCont
       }
     }
 };
+
+  const approveInRegistry = async (wallet) => {
+    if (!registryContract) {
+      toast.error("Registry contract not available");
+      return;
+    }
+    try {
+      const provider = new ethers.BrowserProvider(window.ethereum);
+      const signer = await provider.getSigner();
+      const contract = registryContract.connect(signer);
+      
+      toast.info("Approving entity in DPDP Network Registry...");
+      const tx = await contract.approveFiduciary(wallet, { gasLimit: 1000000 });
+      await tx.wait();
+      toast.success("Registry approval successful");
+      loadData();
+    } catch (err) {
+      console.error("Registry approval failed", err);
+      toast.error("Registry approval failed: " + (err.reason || err.message));
+    }
+  };
 
   const revokeRole = async (wallet) => {
     if (!account || (!rbacContract && !RBAC_ADDRESS)) {
@@ -186,8 +252,8 @@ export default function AdminDashboard({ account, rbacContract, walletMapperCont
   const updateGrievanceStatus = (id, newStatus) => {
     try {
       const existing = JSON.parse(localStorage.getItem('dpdp_grievances') || '[]');
-      const updated = existing.map(g => {
-        if (g.id === id) {
+      const updated = (existing || []).map(g => {
+        if (g?.id === id) {
           const actionLog = {
             action: `Status changed to ${newStatus}`,
             admin: account,
@@ -196,7 +262,7 @@ export default function AdminDashboard({ account, rbacContract, walletMapperCont
           return { 
             ...g, 
             status: newStatus,
-            history: [...(g.history || []), actionLog]
+            history: [...(g?.history || []), actionLog]
           };
         }
         return g;
@@ -214,8 +280,8 @@ export default function AdminDashboard({ account, rbacContract, walletMapperCont
   };
 
 
-  const filteredGrievances = grievances.filter(g => 
-    filterStatus === 'All' || g.status === filterStatus
+  const filteredGrievances = (grievances || []).filter(g => 
+    filterStatus === 'All' || g?.status === filterStatus
   );
 
   useEffect(() => {
@@ -287,9 +353,9 @@ export default function AdminDashboard({ account, rbacContract, walletMapperCont
               ) : (
                 pendingRequests.map((req, index) => (
                   <tr key={index}>
-                    <td><strong>{req.orgName}</strong></td>
-                    <td><code title={req.wallet}>{req.wallet.slice(0, 10)}...{req.wallet.slice(-6)}</code></td>
-                    <td><span className="role-badge" style={{ background: 'var(--grad-blue)', fontSize: '0.75rem' }}>{getRoleName(req.roleId)}</span></td>
+                    <td><strong>{req?.orgName || 'Unknown Org'}</strong></td>
+                    <td><code title={req?.wallet}>{req?.wallet?.slice(0, 10)}...{req?.wallet?.slice(-6)}</code></td>
+                    <td><span className="role-badge" style={{ background: 'var(--grad-blue)', fontSize: '0.75rem' }}>{getRoleName(req?.roleId)}</span></td>
                     <td>
                       <button className="primary-btn" onClick={() => approveRequest(req)} style={{ padding: '0.4rem 0.8rem', fontSize: '0.8rem' }}>
                         Approve & Map
@@ -316,6 +382,7 @@ export default function AdminDashboard({ account, rbacContract, walletMapperCont
                 <th>Wallet Address</th>
                 <th>Mapped Role</th>
                 <th>Status</th>
+                <th>Registry</th>
                 <th>Action</th>
               </tr>
             </thead>
@@ -331,9 +398,26 @@ export default function AdminDashboard({ account, rbacContract, walletMapperCont
                     <td><code style={{ fontSize: '0.85rem' }}>{roleInfo.wallet}</code></td>
                     <td><span className="role-badge" style={{ background: 'var(--grad-teal)', fontSize: '0.75rem' }}>{getRoleName(roleInfo.roleId)}</span></td>
                     <td>
-                      <span className="status-badge active">
-                        Verified Identity
+                      <span className={`status-badge ${roleInfo.onBlockchain ? 'active' : 'pending'}`}>
+                        {roleInfo.onBlockchain ? 'RBAC Mapped' : 'Local Only'}
                       </span>
+                    </td>
+                    <td>
+                      {roleInfo.isRegistryApproved ? (
+                        <span className="status-badge active" style={{ background: 'var(--grad-blue)' }}>Approved</span>
+                      ) : (
+                        [1,2,3,4,5].includes(roleInfo.roleId) ? (
+                          <button 
+                            className="primary-btn" 
+                            style={{ padding: '0.2rem 0.6rem', fontSize: '0.7rem', background: 'var(--medical-primary)' }}
+                            onClick={() => approveInRegistry(roleInfo.wallet)}
+                          >
+                            Approve
+                          </button>
+                        ) : (
+                          <span className="status-badge" style={{ background: '#64748b' }}>N/A</span>
+                        )
+                      )}
                     </td>
                     <td>
                       <button
@@ -390,11 +474,11 @@ export default function AdminDashboard({ account, rbacContract, walletMapperCont
                         <tr><td colSpan="5" style={{ textAlign: 'center', padding: '3rem' }}>No grievances found matching filters.</td></tr>
                       ) : (
                         filteredGrievances.map(g => (
-                          <tr key={g.id} onClick={() => setSelectedGrievance(g)} style={{ cursor: 'pointer' }}>
-                             <td><span style={{ fontSize: '0.75rem', fontWeight: 'bold' }}>{g.id}</span></td>
-                             <td><code title={g.wallet}>{g.wallet.slice(0, 8)}...</code></td>
-                             <td style={{ fontSize: '0.85rem' }}>{g.category}</td>
-                             <td><span className={`status-badge ${g.status.toLowerCase().replace(' ','-')}`}>{g.status}</span></td>
+                          <tr key={g?.id || idx} onClick={() => setSelectedGrievance(g)} style={{ cursor: 'pointer' }}>
+                             <td><span style={{ fontSize: '0.75rem', fontWeight: 'bold' }}>{g?.id || 'N/A'}</span></td>
+                             <td><code title={g?.wallet}>{g?.wallet?.slice(0, 8) || 'N/A'}...</code></td>
+                             <td style={{ fontSize: '0.85rem' }}>{g?.category || 'N/A'}</td>
+                             <td><span className={`status-badge ${(g?.status || 'New').toLowerCase().replace(' ','-')}`}>{g?.status || 'New'}</span></td>
                              <td>
                                 <button className="secondary-btn" style={{ padding: '0.3rem 0.6rem', fontSize: '0.7rem' }}>View Details</button>
                              </td>

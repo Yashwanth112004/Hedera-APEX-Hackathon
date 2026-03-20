@@ -24,9 +24,9 @@ import LegalCompliance from "./pages/LegalCompliance";
 /* CONTRACT ADDRESSES */
 const AUDIT_LOG = "0x92d2eCE8bB295b7806A900Fad7CA26Fd55814976";
 const REGISTRY = "0x155Af6ECaFb48861dA7d16Fb8Af2f6ce9d6DD779";
-const CONSENT_MANAGER = "0xA750aB299a7E778759B1d11EE6e7Bec09f056694";
+const CONSENT_MANAGER = "0x931a878562F3c7f3D6B9Ff27f0ce01e1Cb0F4470";
 const ACCESS_MANAGER = "0x62BC569E5047E6f77C3ECA6C056C9337E39bd1BD";
-const MEDICAL_RECORDS = "0x008053a72017ef79D87beFFA6aB1ec0E835fB282";
+const MEDICAL_RECORDS = "0xd9BB8653aE2Ba8860e4B436D9FdA4c829F04ce85";
 const RBAC_CONTRACT_ADDRESS = "0x0b11e9AA48bf573A8E9d1D5085b71d8c58de9968";
 const HARDCODED_ADMIN = "0x04Fee3FD1B338d12FFD6dBD8d66dE1e8e0BB99cB";
 
@@ -48,7 +48,7 @@ const consentABIOld = [
 ];
 
 const medicalRecordsABI = [
-  "function addRecord(address,string,string)",
+  "function addRecord(address _patient, string _cid, string _recordType, uint256 _billAmount)",
   "function getPatientRecords(address) view returns (tuple(uint256 id,address patient,address provider,string cid,string recordType,uint256 timestamp,uint256 billAmount)[])",
   "function addPrescription(address patient, string patientName, string cid)",
   "function getPendingPrescriptions() view returns (tuple(uint256 recordId,address patient,string patientName,string cid,bool isDispensed,uint256 billAmount)[])",
@@ -58,7 +58,8 @@ const medicalRecordsABI = [
 const registryABI = [
   "function registerFiduciary(string,string)",
   "function approveFiduciary(address)",
-  "function addAdmin(address)"
+  "function addAdmin(address)",
+  "function isApproved(address) view returns (bool)"
 ];
 
 const accessABI = [
@@ -204,6 +205,7 @@ function App() {
     setAccount(wallet);
     localStorage.setItem('hedera_hc_account', wallet);
     
+    // Principal contracts for WRITING (connected to signer)
     setConsent(new ethers.Contract(CONSENT_MANAGER, consentABI, signer));
     setRegistry(new ethers.Contract(REGISTRY, registryABI, signer));
     setAccess(new ethers.Contract(ACCESS_MANAGER, accessABI, signer));
@@ -211,6 +213,10 @@ function App() {
     setMedicalRecords(new ethers.Contract(MEDICAL_RECORDS, medicalRecordsABI, signer));
     setWalletMapper(new ethers.Contract(WALLET_MAPPER_ADDRESS, WALLET_MAPPER_ABI, signer));
     setRBAC(new ethers.Contract(RBAC_CONTRACT_ADDRESS, roleABI, signer));
+    
+    // For specialized read operations via direct RPC
+    const hapiProvider = new ethers.JsonRpcProvider("https://testnet.hashio.io/api");
+    window.hapiProvider = hapiProvider; // Global for debug visibility
 
     if (savedRole) {
       setRole(savedRole);
@@ -458,7 +464,14 @@ function App() {
       toast.success("Consent & Record Link Anchored on Blockchain");
     } catch (err) {
       console.error("Grant failed", err);
-      toast.error("Grant failed: " + (err.reason || err.message));
+      // Enhanced error reporting for contract reverts
+      let errorMsg = err.reason || err.message;
+      if (err.data && err.data.includes("0x08c379a0")) { // Error(string) selector
+          if (err.data.includes("466964756369617279206e6f7420617070726f766564")) { // "Fiduciary not approved"
+               errorMsg = "Fiduciary not approved in Registry. Ensure the entity is registered and approved.";
+          }
+      }
+      toast.error("Grant failed: " + errorMsg);
     }
   };
 
@@ -651,7 +664,17 @@ function App() {
   }, [auditLogContract, account]);
 
   const renderDashboard = () => {
-    const commonProps = { account, consentContract, registryContract, auditLogContract, accessContract, medicalRecordsContract, walletMapperContract, rbacContract };
+    const commonProps = { 
+        account, 
+        consentContract, 
+        registryContract, 
+        auditLogContract, 
+        accessContract, 
+        medicalRecordsContract, 
+        walletMapperContract, 
+        rbacContract,
+        hapiProvider: window.hapiProvider // Explicit read-only RPC provider
+    };
     const r = role?.toLowerCase();
 
     switch (r) {

@@ -62,7 +62,8 @@ contract MedicalRecords {
     function addRecord(
         address _patient,
         string memory _cid,
-        string memory _recordType
+        string memory _recordType,
+        uint256 _billAmount // Added cost field
     ) external {
         // Bypassed for Prototype Demo to allow any tester's wallet to act as Fiduciary
         // require(registry.isApproved(msg.sender), "Caller is not an approved fiduciary");
@@ -76,7 +77,7 @@ contract MedicalRecords {
             cid: _cid,
             recordType: _recordType,
             timestamp: block.timestamp,
-            billAmount: 0
+            billAmount: _billAmount // Updated from hardcoded 0
         }));
 
         // Log this action to the global audit trail

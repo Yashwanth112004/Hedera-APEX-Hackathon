@@ -22,7 +22,8 @@ const HospitalDashboard = ({
     category: 'General',
     testType: '',
     clinicalData: '',
-    sensitivity: 'Medium'
+    sensitivity: 'Medium',
+    billAmount: ''
   });
   const [emergencyTarget, setEmergencyTarget] = useState("");
   const [attendingName, setAttendingName] = useState("");
@@ -102,14 +103,14 @@ const HospitalDashboard = ({
       const readConsent = consentContract.connect(provider);
       const allLogs = await readAudit.getLogs();
 
-      const myLogs = allLogs
-        .filter(l => l.dataFiduciary.toLowerCase() === account.toLowerCase())
+      const myLogs = (allLogs || [])
+        .filter(l => l?.dataFiduciary?.toLowerCase() === account?.toLowerCase())
         .map(l => {
-          const pt = interactionHistory.find(h => h.wallet.toLowerCase() === l.dataPrincipal.toLowerCase());
+          const pt = (interactionHistory || []).find(h => h?.wallet?.toLowerCase() === l?.dataPrincipal?.toLowerCase());
           return {
-            patient: pt ? pt.shortId : l.dataPrincipal.slice(0, 10),
-            type: l.action,
-            timestamp: new Date(Number(l.timestamp) * 1000).toLocaleString(),
+            patient: pt ? pt.shortId : l?.dataPrincipal?.slice(0, 10) || 'N/A',
+            type: l?.action || 'Event',
+            timestamp: l?.timestamp ? new Date(Number(l.timestamp) * 1000).toLocaleString() : 'N/A',
             status: 'Verified'
           };
         }).reverse();
@@ -148,13 +149,13 @@ const HospitalDashboard = ({
         const readContract = medicalRecordsContract.connect(provider);
         const records = await readContract.getPatientRecords(targetWallet);
 
-        const formatted = records.map(r => ({
-          id: r.id.toString(),
-          type: r.recordType,
+        const formatted = (records || []).map(r => ({
+          id: r?.id?.toString() || Math.random().toString(),
+          type: r?.recordType || 'Record',
           status: isEmergency ? "🚨 EMERGENCY" : "Authorized",
-          cid: r.cid,
-          provider: r.provider,
-          billAmount: r.billAmount ? r.billAmount.toString() : '0'
+          cid: r?.cid || 'N/A',
+          provider: r?.provider || 'N/A',
+          billAmount: r?.billAmount ? r.billAmount.toString() : '0'
         }));
 
         setEmergencyRecords(formatted);
@@ -256,7 +257,8 @@ const HospitalDashboard = ({
       const encrypted = encryptData(payload);
       const cid = await uploadToPinata(encrypted, `Record: ${payload.type}`);
 
-      const tx = await medicalRecordsContract.addRecord(targetWallet, cid, payload.type, { gasLimit: 1000000 });
+      const billAmountNum = uploadData.billAmount ? BigInt(uploadData.billAmount) : 0n;
+      const tx = await medicalRecordsContract.addRecord(targetWallet, cid, payload.type, billAmountNum, { gasLimit: 1000000 });
       await tx.wait();
 
       toast.success("Record Anchored on Hedera!");
@@ -384,14 +386,14 @@ const HospitalDashboard = ({
                 </tr>
               </thead>
               <tbody>
-                {emergencyRecords.map((r, idx) => (
+                {(emergencyRecords || []).map((r, idx) => (
                   <tr key={idx}>
-                    <td><strong>{r.type}</strong></td>
-                    <td style={{ fontFamily: 'monospace', fontSize: '0.8rem' }}>{r.cid.slice(0, 16)}...</td>
-                    <td><span style={{ fontSize: '0.8rem' }}>{r.provider.slice(0, 10)}...</span></td>
-                    <td>{r.billAmount} HBAR</td>
+                    <td><strong>{r?.type || 'Record'}</strong></td>
+                    <td style={{ fontFamily: 'monospace', fontSize: '0.8rem' }}>{r?.cid?.slice(0, 16) || 'N/A'}...</td>
+                    <td><span style={{ fontSize: '0.8rem' }}>{r?.provider?.slice(0, 10) || 'N/A'}...</span></td>
+                    <td>{r?.billAmount || '0'} HBAR</td>
                     <td>
-                      <button className="primary-btn" style={{ background: '#EF4444', padding: '0.4rem 0.8rem' }} onClick={() => handleDecryptRecord(r.cid)}>
+                      <button className="primary-btn" style={{ background: '#EF4444', padding: '0.4rem 0.8rem' }} onClick={() => handleDecryptRecord(r?.cid)}>
                         🔓 Decrypt
                       </button>
                     </td>
@@ -425,17 +427,17 @@ const HospitalDashboard = ({
               </tr>
             </thead>
             <tbody>
-              {accessLogs.length === 0 ? (
+              {(!accessLogs || accessLogs.length === 0) ? (
                 <tr>
                   <td colSpan="4" style={{ textAlign: 'center', padding: '2rem' }}>No recent access logs found on-chain.</td>
                 </tr>
               ) : (
                 accessLogs.map((log, idx) => (
                   <tr key={idx}>
-                    <td><strong style={{ color: 'var(--medical-primary)' }}>{log.patient}</strong></td>
-                    <td>{log.type}</td>
-                    <td style={{ fontSize: '0.85rem' }}>{log.timestamp}</td>
-                    <td><span className="status-badge active">{log.status}</span></td>
+                    <td><strong style={{ color: 'var(--medical-primary)' }}>{log?.patient || 'N/A'}</strong></td>
+                    <td>{log?.type || 'Event'}</td>
+                    <td style={{ fontSize: '0.85rem' }}>{log?.timestamp || 'N/A'}</td>
+                    <td><span className="status-badge active">{log?.status || 'Active'}</span></td>
                   </tr>
                 ))
               )}
@@ -628,6 +630,16 @@ const HospitalDashboard = ({
                   <option value="Medium">Medium (Lab Reports, Imaging)</option>
                   <option value="High">High (Diagnosis, Psych, HIV)</option>
                 </select>
+              </div>
+              <div className="form-group">
+                <label>Billing Amount (HBAR) / Claimable Fee</label>
+                <input 
+                  type="number" 
+                  className="glass-input" 
+                  value={uploadData.billAmount} 
+                  onChange={e => setUploadData({ ...uploadData, billAmount: e.target.value })} 
+                  placeholder="e.g. 2500" 
+                />
               </div>
               <div className="modal-actions">
                 <button type="submit" className="primary-btn" disabled={loading}>Anchor Encrypted Record</button>

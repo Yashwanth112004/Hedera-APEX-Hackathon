@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { ethers } from 'ethers';
 
-const AuditLogs = ({ auditLogContract, account, role }) => {
+const AuditLogs = ({ auditLogContract, account, role, hapiProvider }) => {
   const [logs, setLogs] = useState([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState('all');
@@ -11,19 +11,48 @@ const AuditLogs = ({ auditLogContract, account, role }) => {
     if (!auditLogContract) return;
     try {
       setLoading(true);
-      const provider = new ethers.BrowserProvider(window.ethereum);
-      const readContract = auditLogContract.connect(provider);
-      const blockchainLogs = await readContract.getLogs();
-      const formattedLogs = blockchainLogs.map((log, index) => ({
-        id: index + 1,
-        patientAddress: log.dataPrincipal,
-        hospitalAddress: log.dataFiduciary,
-        action: log.action,
-        purpose: log.purpose,
-        timestamp: new Date(Number(log.timestamp) * 1000).toISOString(),
-        txHash: 'On-Chain Record',
-        status: 'Success'
-      }));
+      const readContract = hapiProvider ? auditLogContract.connect(hapiProvider) : auditLogContract;
+      
+      let formattedLogs = [];
+      try {
+        const blockchainLogs = await readContract.getLogs();
+        formattedLogs = (blockchainLogs || []).map((log, index) => ({
+          id: index + 1,
+          patientAddress: log?.dataPrincipal || 'N/A',
+          hospitalAddress: log?.dataFiduciary || 'N/A',
+          action: log?.action || 'Unknown',
+          purpose: log?.purpose || 'N/A',
+          timestamp: log?.timestamp ? new Date(Number(log.timestamp) * 1000).toISOString() : new Date().toISOString(),
+          txHash: 'On-Chain Record',
+          status: 'Success'
+        }));
+      } catch (logErr) {
+        console.warn("getLogs() failed, falling back to Event Filtering...", logErr);
+        // Fallback: Query events from the last 10,000 blocks
+        const filterEvents = async (eventName, actionLabel) => {
+          try {
+            const filter = readContract.filters[eventName]();
+            const events = await readContract.queryFilter(filter, -10000);
+            return (events || []).map(ev => ({
+              patientAddress: ev?.args?.[0] || 'N/A',
+              hospitalAddress: ev?.args?.[1] || ethers.ZeroAddress,
+              action: actionLabel,
+              purpose: ev?.args?.[2] || "N/A",
+              timestamp: ev?.args?.[3] ? new Date(Number(ev.args[3]) * 1000).toISOString() : new Date().toISOString(),
+              txHash: ev?.transactionHash || 'N/A',
+              status: 'Success'
+            }));
+          } catch (e) { return []; }
+        };
+
+        const [granted, accessed, requested] = await Promise.all([
+          filterEvents('ConsentGranted', 'Consent Granted'),
+          filterEvents('DataAccessed', 'Data Accessed'),
+          filterEvents('AccessRequested', 'Access Requested')
+        ]);
+
+        formattedLogs = [...granted, ...accessed, ...requested].sort((a,b) => new Date(a.timestamp) - new Date(b.timestamp));
+      }
 
       const isAdmin = role?.toLowerCase() === 'admin';
       const userAddr = account?.toLowerCase();
@@ -31,11 +60,11 @@ const AuditLogs = ({ auditLogContract, account, role }) => {
       const finalLogs = isAdmin 
         ? formattedLogs 
         : formattedLogs.filter(l => 
-            l.patientAddress.toLowerCase() === userAddr || 
-            l.hospitalAddress.toLowerCase() === userAddr
+            l.patientAddress?.toLowerCase() === userAddr || 
+            l.hospitalAddress?.toLowerCase() === userAddr
           );
         
-      setLogs(finalLogs.reverse()); // Show newest first
+      setLogs([...finalLogs].reverse()); // Show newest first
     } catch (err) {
       console.error("Failed to fetch audit logs:", err);
     } finally {
@@ -55,10 +84,10 @@ const AuditLogs = ({ auditLogContract, account, role }) => {
       (filter === 'access' && log.action.includes('Access'));
 
     const matchesSearch = searchTerm === '' ||
-      log.patientAddress.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      log.hospitalAddress.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      log.action.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      log.purpose.toLowerCase().includes(searchTerm.toLowerCase());
+      (log?.patientAddress?.toLowerCase() || '').includes(searchTerm.toLowerCase()) ||
+      (log?.hospitalAddress?.toLowerCase() || '').includes(searchTerm.toLowerCase()) ||
+      (log?.action?.toLowerCase() || '').includes(searchTerm.toLowerCase()) ||
+      (log?.purpose?.toLowerCase() || '').includes(searchTerm.toLowerCase());
 
     return matchesFilter && matchesSearch;
   });
@@ -68,7 +97,7 @@ const AuditLogs = ({ auditLogContract, account, role }) => {
   };
 
   const truncateAddress = (address) => {
-    return `${address.slice(0, 6)}...${address.slice(-4)}`;
+    return `${address?.slice(0, 6) || ''}...${address?.slice(-4) || ''}`;
   };
 
   const statusColors = { Success: 'var(--status-approved)', Failed: 'var(--status-rejected)' };

@@ -56,8 +56,9 @@ const DoctorDashboard = ({
                 const normalizedDoctor = account.toLowerCase();
                 // Filter for any interaction where this doctor was the fiduciary
                 const uniquePatients = new Set();
-                logs.forEach(log => {
-                    if (log.dataFiduciary.toLowerCase() === normalizedDoctor) {
+                (logs || []).forEach(log => {
+                    const fid = log?.dataFiduciary?.toLowerCase();
+                    if (fid === normalizedDoctor) {
                         uniquePatients.add(log.dataPrincipal);
                     }
                 });
@@ -109,12 +110,13 @@ const DoctorDashboard = ({
 
                 // Fetch Consents
                 const patientConsents = await getSafePatientConsents(readConsent, patient, consentContract.target, provider);
-                patientConsents.forEach(c => {
-                    if (c.isActive && c.dataFiduciary.toLowerCase() === normalizedDoctor) {
-                        if (c.dataHash) {
+                (patientConsents || []).forEach(c => {
+                    if (c?.isActive && c?.dataFiduciary?.toLowerCase() === normalizedDoctor) {
+                        if (c?.dataHash) {
                             c.dataHash.split(',').forEach(cid => {
-                                if (cid.trim()) allLinked.push({
-                                    cid: cid.trim(),
+                                const trimmed = cid?.trim();
+                                if (trimmed) allLinked.push({
+                                    cid: trimmed,
                                     purpose: c.purpose,
                                     patient,
                                     shortId,
@@ -128,7 +130,7 @@ const DoctorDashboard = ({
                 // Fetch Pending Requests
                 try {
                     const pending = await getSafePendingRequests(readConsent, patient, consentContract.target, provider);
-                    pending.filter(r => r.provider.toLowerCase() === normalizedDoctor).forEach(r => {
+                    (pending || []).filter(r => r?.provider?.toLowerCase() === normalizedDoctor).forEach(r => {
                         allPending.push({ ...r, patient, shortId });
                     });
                 } catch (pErr) {
@@ -137,13 +139,13 @@ const DoctorDashboard = ({
 
                 // Fetch General Records
                 const records = await readMedical.getPatientRecords(patient);
-                records.forEach(r => {
+                (records || []).forEach(r => {
                     allConsents.push({
-                        id: r.id.toString(),
-                        type: r.recordType,
+                        id: r?.id?.toString() || Math.random().toString(),
+                        type: r?.recordType || 'Record',
                         status: "Authorized",
-                        cid: r.cid,
-                        provider: r.provider,
+                        cid: r?.cid || 'N/A',
+                        provider: r?.provider || 'N/A',
                         patient,
                         shortId
                     });
@@ -245,15 +247,15 @@ const DoctorDashboard = ({
 
                 // If NOT emergency, only show records this doctor uploaded.
                 // If EMERGENCY, show ALL records found for this patient.
-                formatted = records
-                    .filter(r => isEmergency || r.provider.toLowerCase() === account.toLowerCase())
+                formatted = (records || [])
+                    .filter(r => isEmergency || r?.provider?.toLowerCase() === account?.toLowerCase())
                     .map(r => ({
-                        id: r.id.toString(),
-                        type: r.recordType,
+                        id: r?.id?.toString() || Math.random().toString(),
+                        type: r?.recordType || 'Record',
                         status: isEmergency ? "🚨 EMERGENCY ACCESS" : "Authorized",
-                        cid: r.cid,
-                        provider: r.provider,
-                        billAmount: r.billAmount ? r.billAmount.toString() : '0'
+                        cid: r?.cid || 'N/A',
+                        provider: r?.provider || 'N/A',
+                        billAmount: r?.billAmount ? r.billAmount.toString() : '0'
                     }));
 
                 setActiveConsents(formatted);
@@ -265,20 +267,21 @@ const DoctorDashboard = ({
 
                     const normalizedDoctor = account.toLowerCase();
                     
-                    patientConsents.forEach(c => {
+                    (patientConsents || []).forEach(c => {
                         // In emergency Mode, we take ALL active consents, regardless of who the fiduciary is
-                        const isAuthorized = isEmergency || (c.dataFiduciary.toLowerCase() === normalizedDoctor);
+                        const isAuthorized = isEmergency || (c?.dataFiduciary?.toLowerCase() === normalizedDoctor);
                         
-                        if (c.isActive && isAuthorized && c.dataHash) {
+                        if (c?.isActive && isAuthorized && c?.dataHash) {
                             const cids = c.dataHash.split(',');
                             cids.forEach(cid => {
-                                if (cid.trim()) {
+                                const trimmed = cid?.trim();
+                                if (trimmed) {
                                     linked.push({
-                                        cid: cid.trim(),
+                                        cid: trimmed,
                                         purpose: c.purpose,
                                         expiry: c.expiry,
                                         sharedAt: c.grantedAt,
-                                        isEmergencySource: isEmergency && (c.dataFiduciary.toLowerCase() !== normalizedDoctor)
+                                        isEmergencySource: isEmergency && (c.dataFiduciary?.toLowerCase() !== normalizedDoctor)
                                     });
                                 }
                             });
@@ -288,7 +291,7 @@ const DoctorDashboard = ({
 
                     // Fetch pending requests sent by this doctor to this patient
                     const pendingRequests = await consentReadContract.getPendingRequests(targetWallet);
-                    pendingRequestsByMe = pendingRequests.filter(r => r.provider.toLowerCase() === normalizedDoctor);
+                    pendingRequestsByMe = (pendingRequests || []).filter(r => r?.provider?.toLowerCase() === normalizedDoctor);
                     setPendingSentRequests(pendingRequestsByMe);
                 }
 
@@ -601,12 +604,12 @@ const DoctorDashboard = ({
                             {activeConsents.length === 0 ? (
                                 <tr><td colSpan="4" style={{ textAlign: 'center', padding: '3rem' }}>No general records found.</td></tr>
                             ) : (
-                                activeConsents.map(c => (
-                                    <tr key={c.id}>
-                                        <td><strong style={{ color: 'var(--medical-primary)' }}>{c.shortId}</strong></td>
-                                        <td>{c.type}</td>
-                                        <td><span className="status-badge active">{c.status}</span></td>
-                                        <td style={{ fontFamily: 'monospace', fontSize: '0.85em', color: 'var(--text-secondary)' }}>{c.cid.slice(0, 12)}...</td>
+                                (activeConsents || []).map(c => (
+                                    <tr key={c?.id || Math.random()}>
+                                        <td><strong style={{ color: 'var(--medical-primary)' }}>{c?.shortId || 'N/A'}</strong></td>
+                                        <td>{c?.type || 'Record'}</td>
+                                        <td><span className="status-badge active">{c?.status || 'Active'}</span></td>
+                                        <td style={{ fontFamily: 'monospace', fontSize: '0.85em', color: 'var(--text-secondary)' }}>{c?.cid?.slice(0, 12) || 'N/A'}...</td>
                                         <td>
                                             <button className="secondary-btn" onClick={() => {
                                                 setIpfsCid(c.cid);
@@ -643,16 +646,16 @@ const DoctorDashboard = ({
                             </thead>
                             <tbody>
                                 {/* Show Pending Requests First */}
-                                {pendingSentRequests.map((r, idx) => (
+                                {(pendingSentRequests || []).map((r, idx) => (
                                     <tr key={`req-${idx}`} style={{ opacity: 0.8 }}>
-                                        <td><strong style={{ color: 'var(--medical-primary)' }}>{r.shortId}</strong></td>
-                                        <td>{r.purpose}</td>
+                                        <td><strong style={{ color: 'var(--medical-primary)' }}>{r?.shortId || 'N/A'}</strong></td>
+                                        <td>{r?.purpose || 'Access Request'}</td>
                                         <td><span className="status-badge pending" style={{ padding: '0.3rem 0.6rem', fontSize: '0.75rem' }}>Consent Requested</span></td>
                                         <td>
                                             <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>
-                                                {r.patient.slice(0, 10)}...
+                                                {r?.patient?.slice(0, 10) || 'N/A'}...
                                             </div>
-                                            {new Date(Number(r.timestamp) * 1000).toLocaleDateString()}
+                                            {r?.timestamp ? new Date(Number(r.timestamp) * 1000).toLocaleDateString() : 'N/A'}
                                         </td>
                                         <td>
                                             <button className="secondary-btn" disabled style={{ opacity: 0.5, cursor: 'not-allowed' }}>
@@ -662,16 +665,16 @@ const DoctorDashboard = ({
                                     </tr>
                                 ))}
                                 {/* Show Linked Records */}
-                                {linkedRecords.map((r, idx) => (
+                                {(linkedRecords || []).map((r, idx) => (
                                     <tr key={`link-${idx}`}>
-                                        <td><strong style={{ color: 'var(--medical-primary)' }}>{r.shortId}</strong></td>
-                                        <td>{r.purpose}</td>
-                                        <td style={{ fontFamily: 'monospace', fontSize: '0.85em', color: 'var(--text-secondary)' }}>{r.cid.slice(0, 16)}...</td>
+                                        <td><strong style={{ color: 'var(--medical-primary)' }}>{r?.shortId || 'N/A'}</strong></td>
+                                        <td>{r?.purpose || 'Shared Content'}</td>
+                                        <td style={{ fontFamily: 'monospace', fontSize: '0.85em', color: 'var(--text-secondary)' }}>{r?.cid?.slice(0, 16) || 'N/A'}...</td>
                                         <td>
                                             <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>
-                                                {r.patient?.slice(0, 10)}...
+                                                {r?.patient?.slice(0, 10) || 'N/A'}...
                                             </div>
-                                            {new Date(Number(r.sharedAt) * 1000).toLocaleDateString()}
+                                            {r?.sharedAt ? new Date(Number(r.sharedAt) * 1000).toLocaleDateString() : 'N/A'}
                                         </td>
                                         <td>
                                             <button className="primary-btn" onClick={() => {

@@ -281,23 +281,23 @@ const RegulatorDashboard = () => {
                 </tr>
               </thead>
               <tbody>
-                {violations.map((violation) => (
-                  <tr key={violation.id}>
-                    <td>#{violation.id}</td>
-                    <td>{violation.hospital}</td>
-                    <td>{violation.violation}</td>
+                {(violations || []).map((violation) => (
+                  <tr key={violation?.id}>
+                    <td>#{violation?.id}</td>
+                    <td>{violation?.hospital}</td>
+                    <td>{violation?.violation}</td>
                     <td>
                       <span
                         className="severity-badge"
-                        style={{ backgroundColor: getSeverityColor(violation.severity) + '20', color: getSeverityColor(violation.severity) }}
+                        style={{ backgroundColor: getSeverityColor(violation?.severity) + '20', color: getSeverityColor(violation?.severity) }}
                       >
-                        {violation.severity}
+                        {violation?.severity}
                       </span>
                     </td>
-                    <td>{violation.date}</td>
+                    <td>{violation?.date}</td>
                     <td>
-                      <span className="status-badge" style={{ backgroundColor: getStatusColor(violation.status) + '20', color: getStatusColor(violation.status) }}>
-                        {violation.status}
+                      <span className="status-badge" style={{ backgroundColor: getStatusColor(violation?.status) + '20', color: getStatusColor(violation?.status) }}>
+                        {violation?.status}
                       </span>
                     </td>
                   </tr>

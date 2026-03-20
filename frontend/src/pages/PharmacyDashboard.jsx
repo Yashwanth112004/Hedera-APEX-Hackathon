@@ -40,7 +40,7 @@ const PharmacyDashboard = ({
                 const rawQueue = await readMedical.getPendingPrescriptions();
                 console.log(`[Pharmacy] Found ${rawQueue.length} items in queue`);
 
-                const formatted = (await Promise.all(rawQueue.map(async (rx) => {
+                const formatted = (await Promise.all((rawQueue || []).map(async (rx) => {
                     if (rx.isDispensed) return null; // Filter out dispensed ones at source
 
                     let authorized = false;
@@ -58,12 +58,12 @@ const PharmacyDashboard = ({
                     try {
                         const patientConsents = await getSafePatientConsents(readConsent, rx.patient, consentContract.target, provider);
                         
-                        if (patientConsents.length > 0) {
-                            console.log(`[Pharmacy-Diag] Found ${patientConsents.length} total consents for patient ${rx.patient.slice(0,8)}`);
+                        if (patientConsents?.length > 0) {
+                            console.log(`[Pharmacy-Diag] Found ${patientConsents.length} total consents for patient ${rx?.patient?.slice(0,8) || 'Unknown'}`);
                         }
 
-                        patientConsents.forEach(c => {
-                            const p = (c.purpose || "").toLowerCase();
+                        (patientConsents || []).forEach(c => {
+                            const p = (c?.purpose || "").toLowerCase();
                             const isPharmaPurpose = p.includes('medication') || 
                                                  p.includes('dispensation') || 
                                                  p.includes('prescription') || 
@@ -72,8 +72,8 @@ const PharmacyDashboard = ({
                                                  p === "all" ||
                                                  p.includes('medical');
 
-                            const isFiduciary = c.dataFiduciary.toLowerCase() === account.toLowerCase();
-                            const isExpired = Number(c.expiry) <= Math.floor(Date.now() / 1000);
+                            const isFiduciary = c?.dataFiduciary?.toLowerCase() === account?.toLowerCase();
+                            const isExpired = Number(c?.expiry || 0) <= Math.floor(Date.now() / 1000);
 
                             if (isFiduciary) {
                                 console.log(`[Pharmacy-Diag] Match found: Active=${c.isActive}, Purpose="${p}" (isPharma=${isPharmaPurpose}), Expired=${isExpired}`);
@@ -81,12 +81,13 @@ const PharmacyDashboard = ({
 
                             if (isFiduciary && c.isActive && isPharmaPurpose && !isExpired) {
                                 authorized = true;
-                                if (c.dataHash) {
+                                if (c?.dataHash) {
                                     const cids = c.dataHash.split(',');
                                     cids.forEach(cid => {
-                                        if (cid.trim()) {
+                                        const trimmed = cid?.trim();
+                                        if (trimmed) {
                                             activeLinked.push({
-                                                cid: cid.trim(),
+                                                cid: trimmed,
                                                 purpose: c.purpose,
                                                 patientName: rx.patientName,
                                                 patientWallet: rx.patient
@@ -101,11 +102,11 @@ const PharmacyDashboard = ({
                     }
 
                     return {
-                        id: rx.recordId.toString(),
-                        patient: rx.patient,
-                        patientName: rx.patientName,
+                        id: rx?.recordId?.toString() || Math.random().toString(),
+                        patient: rx?.patient || 'Unknown',
+                        patientName: rx?.patientName || 'N/A',
                         patientShortId,
-                        cid: rx.cid,
+                        cid: rx?.cid || 'N/A',
                         status: 'Pending',
                         isAuthorized: authorized,
                         linked: activeLinked
@@ -141,7 +142,7 @@ const PharmacyDashboard = ({
         try {
             toast.info("Sending formal access request to Patient...");
             const tx = await consentContract.requestAccess(wallet, "Pharmacy Dispensation Verification", { gasLimit: 1000000 });
-            setRecentlyRequested(prev => ({ ...prev, [wallet.toLowerCase()]: true }));
+            setRecentlyRequested(prev => ({ ...prev, [wallet?.toLowerCase() || '']: true }));
             await tx.wait();
             toast.success("Access Request sent! Waiting for patient approval.");
         } catch (err) {
@@ -196,8 +197,8 @@ const PharmacyDashboard = ({
             fetchPrescriptions(); // Refresh queue
         } catch (err) {
             console.error("Dispensation failed on-chain:", err);
-            const reason = err.reason || err.message || "Unknown error";
-            toast.error(`Dispensation failed: ${reason.slice(0, 60)}${reason.length > 60 ? '...' : ''}`);
+            const reason = err?.reason || err?.message || "Unknown error";
+            toast.error(`Dispensation failed: ${reason?.slice(0, 60) || 'Error'}${reason?.length > 60 ? '...' : ''}`);
         } finally {
             setIsDispensing(false);
         }
@@ -277,8 +278,7 @@ const PharmacyDashboard = ({
                                 <th style={{ color: 'var(--text-main)', fontWeight: '700' }}>Patient Identity</th>
                                 <th style={{ color: 'var(--text-main)', fontWeight: '700' }}>Short ID</th>
                                 <th style={{ color: 'var(--text-main)', fontWeight: '700' }}>Wallet Address</th>
-                                <th style={{ color: 'var(--text-main)', fontWeight: '700' }}>Linked Records</th>
-                                <th style={{ color: 'var(--text-main)', fontWeight: '700' }}>Action</th>
+                                 <th style={{ color: 'var(--text-main)', fontWeight: '700' }}>Action</th>
                             </tr>
                         </thead>
                         <tbody>
@@ -292,27 +292,18 @@ const PharmacyDashboard = ({
                                 });
 
                                 if (filtered.length === 0) {
-                                    return <tr><td colSpan="5" style={{ textAlign: 'center', padding: '3rem', color: 'var(--text-muted)' }}>No prescriptions found matching your search.</td></tr>;
+                                    return <tr><td colSpan="4" style={{ textAlign: 'center', padding: '3rem', color: 'var(--text-muted)' }}>No prescriptions found matching your search.</td></tr>;
                                 }
 
                                 return filtered.map(px => (
-                                    <tr key={px.id}>
-                                        <td><strong>{px.patientName}</strong></td>
-                                        <td><span className="status-badge active" style={{ fontSize: '0.75rem', padding: '2px 10px' }}>{px.patientShortId}</span></td>
-                                        <td style={{ fontFamily: 'monospace', fontSize: '0.85em', color: 'var(--text-muted)' }}>{px.patient.slice(0, 8)}...</td>
-                                        <td>
-                                            {px.linked.length > 0 ? (
-                                                <span className="role-badge" style={{ background: 'var(--grad-teal)', fontSize: '0.75rem' }}>
-                                                    {px.linked.length} Linked
-                                                </span>
-                                            ) : (
-                                                <span style={{ color: 'var(--text-muted)', fontSize: '0.8rem' }}>None</span>
-                                            )}
-                                        </td>
+                                    <tr key={px?.id || Math.random()}>
+                                        <td><strong>{px?.patientName || 'N/A'}</strong></td>
+                                        <td><span className="status-badge active" style={{ fontSize: '0.75rem', padding: '2px 10px' }}>{px?.patientShortId || 'N/A'}</span></td>
+                                        <td style={{ fontFamily: 'monospace', fontSize: '0.85em', color: 'var(--text-muted)' }}>{px?.patient?.slice(0, 8) || 'N/A'}...</td>
                                         <td>
                                             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
                                                 {(() => {
-                                                    const patientKey = px.patient.toLowerCase();
+                                                    const patientKey = px?.patient?.toLowerCase();
                                                     
                                                     if (px.isAuthorized) {
                                                         return (
@@ -359,11 +350,11 @@ const PharmacyDashboard = ({
                                 </tr>
                             </thead>
                             <tbody>
-                                {linkedRecords.map((r, idx) => (
+                                {(linkedRecords || []).map((r, idx) => (
                                     <tr key={idx}>
-                                        <td>{r.patientName}</td>
-                                        <td>{r.purpose}</td>
-                                        <td style={{ fontFamily: 'monospace', fontSize: '0.8rem', color: 'var(--text-muted)' }}>{r.cid.slice(0, 16)}...</td>
+                                        <td>{r?.patientName || 'N/A'}</td>
+                                        <td>{r?.purpose || 'Shared Content'}</td>
+                                        <td style={{ fontFamily: 'monospace', fontSize: '0.8rem', color: 'var(--text-muted)' }}>{r?.cid?.slice(0, 16) || 'N/A'}...</td>
                                         <td>
                                             {recentlyRequested[r.patientWallet?.toLowerCase()] === true ? (
                                                 <button 
