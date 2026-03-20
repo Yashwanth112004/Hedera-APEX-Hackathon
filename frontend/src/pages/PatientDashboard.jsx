@@ -211,10 +211,19 @@ const PatientDashboard = ({
     }
 
     saveBeneficiaries(updated);
+    
+    // NOTIFICATION: Store notification for the beneficiary wallet
+    try {
+      const notifyKey = `beneficiary_notifications_${finalWallet.toLowerCase()}`;
+      const existing = JSON.parse(localStorage.getItem(notifyKey) || "[]");
+      existing.push({ patient: account, time: Date.now() });
+      localStorage.setItem(notifyKey, JSON.stringify(existing));
+    } catch (e) { console.warn("Failed to store beneficiary notification", e); }
+
     setShowBeneficiaryModal(false);
     setBeneficiaryFormData({ wallet: '', password: '' });
     setEditingBeneficiaryIndex(null);
-    toast.success(editingBeneficiaryIndex !== null ? "Beneficiary updated" : "Beneficiary added");
+    toast.success(editingBeneficiaryIndex !== null ? "Beneficiary updated" : "Beneficiary successfully added & notified");
   };
 
   const removeBeneficiary = (index) => {
@@ -448,9 +457,38 @@ const PatientDashboard = ({
   const handleEraseConsent = async (index) => {
     try {
       await onEraseConsent(index);
-      toast.success('Consent erased successfully');
+      toast.success('Consent Erasure Requested successfully');
     } catch {
       toast.error('Failed to erase consent');
+    }
+  };
+
+  const handleUniversalErasure = async () => {
+    const msg = "🚨 DPDP RIGHT TO ERASURE: This will revoke all active consents and send a formal on-chain request to all clinical entities to delete your data. Are you sure?";
+    if (!window.confirm(msg)) return;
+
+    try {
+      toast.info("Processing Universal Erasure Protocol...");
+      
+      // 1. Revoke all active
+      for (let i = 0; i < consents.length; i++) {
+        if (consents[i].isActive) {
+          await onRevokeConsent(i);
+        }
+      }
+
+      // 2. Request Erasure for all
+      for (let i = 0; i < consents.length; i++) {
+        await onEraseConsent(i);
+      }
+
+      // 3. Clear local beneficiaries
+      localStorage.removeItem(`beneficiaries_${account}`);
+      setBeneficiaries([]);
+
+      toast.success("Universal Erasure Request Completed & Local Records Cleared.");
+    } catch (err) {
+      toast.error("Universal erasure process failed or was interrupted.");
     }
   };
 
@@ -782,7 +820,7 @@ const PatientDashboard = ({
                         <span className="role-badge" style={{ background: '#F1F5F9', color: '#64748B' }}>Unsent</span>
                       </td>
                       <td>
-                        <button className="revoke-btn" style={{ padding: '0.3rem 0.6rem', fontSize: '0.75rem' }} onClick={() => toast.success("Erasure request anchored to ledger!")}>
+                        <button className="revoke-btn" style={{ padding: '0.3rem 0.6rem', fontSize: '0.75rem' }} onClick={() => handleEraseConsent(i)}>
                           Request Erasure
                         </button>
                       </td>
@@ -790,6 +828,16 @@ const PatientDashboard = ({
                   ))}
                 </tbody>
               </table>
+
+              <div style={{ marginTop: '2rem', padding: '1.5rem', background: '#FEF2F2', border: '1px solid #FCA5A5', borderRadius: '12px' }}>
+                <h4 style={{ color: '#991B1B', marginBottom: '0.5rem' }}>DANGER ZONE: Universal Erasure</h4>
+                <p style={{ fontSize: '0.85rem', color: '#B91C1C', marginBottom: '1rem' }}>
+                  Exercise your Right to be Forgotten. This action will revoke all permissions and notify all providers to scrub your records from their systems.
+                </p>
+                <button className="primary-btn" style={{ background: '#DC2626' }} onClick={handleUniversalErasure}>
+                  Initiate Universal Right to Erasure
+                </button>
+              </div>
             </div>
           ) : (
             <table className="data-table">

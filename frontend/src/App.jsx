@@ -403,6 +403,18 @@ function App() {
       setShowBeneficiaryLogin(false);
       localStorage.setItem('hedera_hc_role', 'patient');
       toast.success(`Access granted for account: ${resolvedMainAccount}`);
+      
+      // NOTIFICATION: Check if this beneficiary was newly added
+      try {
+        const notifyKey = `beneficiary_notifications_${beneficiaryWallet.toLowerCase()}`;
+        const storedNotif = JSON.parse(localStorage.getItem(notifyKey) || "[]");
+        if (storedNotif.length > 0) {
+          storedNotif.forEach(n => {
+            toast.info(`📢 NEW: You were added as a beneficiary by patient ${n.patient.slice(0,10)}...`, { autoClose: false });
+          });
+          localStorage.removeItem(notifyKey); // Clear after showing
+        }
+      } catch (e) { console.warn("Notification check failed", e); }
     } else if (storedMainAcc !== inputMainAcc) {
       console.error("[Beneficiary-Login] Account mismatch detected.");
       toast.error(`Account Mismatch: Stored (${storedMainAcc.slice(0, 8)}...) != Input (${inputMainAcc.slice(0, 8)}...). Please Refresh (Ctrl+F5) and try again.`);
@@ -457,6 +469,10 @@ function App() {
       loadConsents();
       toast.success("Consent Revoked");
     } catch (err) {
+      if (err.code === 'ACTION_REJECTED') {
+        console.log("Revoke transaction cancelled by user");
+        return; // Silent return for manual cancellation
+      }
       toast.error("Revoke failed");
     }
   };
@@ -606,9 +622,17 @@ function App() {
     const requestedFilter = auditLogContract.filters.AccessRequested(account);
 
     const onAccessed = (principal, fiduciary, purpose, timestamp) => {
-      const msg = `🚨 DPDP ALERT: Data accessed by ${fiduciary.slice(0, 10)}... for ${purpose}`;
-      toast.info(msg, { autoClose: 10000 });
-      setNotifications(prev => [{ msg, time: Date.now(), type: 'access' }, ...prev]);
+      const isEmergency = purpose.includes('EMERGENCY_ACCESS') || purpose.includes('Break-Glass');
+      const msg = isEmergency 
+        ? `🚨 URGENT: Emergency glass-break access initiated for your wallet by ${fiduciary.slice(0, 10)}...! Reason: ${purpose}`
+        : `🚨 DPDP ALERT: Data accessed by ${fiduciary.slice(0, 10)}... for ${purpose}`;
+      
+      if (isEmergency) {
+        toast.error(msg, { autoClose: false, closeOnClick: false, draggable: false });
+      } else {
+        toast.info(msg, { autoClose: 10000 });
+      }
+      setNotifications(prev => [{ msg, time: Date.now(), type: isEmergency ? 'emergency' : 'access' }, ...prev]);
     };
 
     const onRequested = (principal, fiduciary, purpose, timestamp) => {
