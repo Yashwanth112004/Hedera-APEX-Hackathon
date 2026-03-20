@@ -380,6 +380,12 @@ const LabDashboard = ({
           <p style={{ color: 'var(--text-muted)', fontSize: '1.1rem' }}>Secure diagnostic data management and blockchain-anchored reports.</p>
         </div>
         <div className="dashboard-actions">
+          <button className="secondary-btn" onClick={() => {
+            setReqWallet(account);
+            setShowOrgRegForm(true);
+          }}>
+            Register Organisation
+          </button>
         </div>
       </div>
 

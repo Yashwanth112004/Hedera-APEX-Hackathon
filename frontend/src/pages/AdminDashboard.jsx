@@ -14,7 +14,7 @@ const roleABI = [
   "function isAdmin(address user) view returns (bool)"
 ];
 
-export default function AdminDashboard({ account }) {
+export default function AdminDashboard({ account, rbacContract, walletMapperContract }) {
 
   const [pendingRequests, setPendingRequests] = useState([]);
   const [activeRoles, setActiveRoles] = useState([]);
@@ -25,18 +25,21 @@ export default function AdminDashboard({ account }) {
 
   const loadData = async () => {
     try {
+      toast.info("Syncing ledger state...");
       const provider = new ethers.BrowserProvider(window.ethereum);
-      const contract = new ethers.Contract(RBAC_ADDRESS, roleABI, provider);
+      const contract = rbacContract || new ethers.Contract(RBAC_ADDRESS, roleABI, provider);
 
       const localReqs = JSON.parse(localStorage.getItem('dpdp_role_requests') || '[]');
       setPendingRequests(localReqs.filter(r => r.status === 'pending'));
 
-      // Check on-chain mapped status for all known wallets instead of querying massive event logs
-      // This is much safer for public testnets with rate limits like Hedera
-      const uniqueWallets = [...new Set(localReqs.map(r => r.wallet))];
+      // Role discovery logic: 
+      // 1. Wallets from local requests
+      // 2. Any hardcoded/known wallets
+      const uniqueWallets = [...new Set([...localReqs.map(r => r.wallet), HARDCODED_ADMIN])];
       const active = [];
 
       for (const rawWallet of uniqueWallets) {
+        if (!rawWallet) continue;
         try {
           const safeWallet = ethers.getAddress(rawWallet);
           let roleId = await contract.getRole(safeWallet);
@@ -52,7 +55,13 @@ export default function AdminDashboard({ account }) {
           }
 
           if (Number(roleId) !== 0) {
-            active.push({ wallet: safeWallet, roleId: Number(roleId) });
+            // Find organization name from local requests if available
+            const matchingReq = localReqs.find(r => r.wallet.toLowerCase() === safeWallet.toLowerCase());
+            active.push({ 
+              wallet: safeWallet, 
+              roleId: Number(roleId),
+              orgName: matchingReq ? matchingReq.orgName : "Verified Provider"
+            });
           }
         } catch (e) {
           console.warn("Could not fetch role, invalid address format:", rawWallet);
@@ -60,6 +69,7 @@ export default function AdminDashboard({ account }) {
       }
 
       setActiveRoles(active);
+      toast.success("Ledger state synchronized");
 
       // --- GRIEVANCE SYNC ---
       const localGrievances = JSON.parse(localStorage.getItem('dpdp_grievances') || '[]');
@@ -67,6 +77,7 @@ export default function AdminDashboard({ account }) {
 
     } catch (err) {
       console.error("Error loading admin data", err);
+      toast.error("Ledger sync failed: " + err.message);
     } finally {
       // Always sync grievances from local storage as fallback/primary
       const localGrievances = JSON.parse(localStorage.getItem('dpdp_grievances') || '[]');
@@ -76,22 +87,27 @@ export default function AdminDashboard({ account }) {
 
   const getRoleName = (id) => {
     switch (Number(id)) {
-      case 1: return "Hospital";
-      case 2: return "Diagnostic Lab";
-      case 3: return "Doctor";
-      case 4: return "Pharmacy";
-      case 5: return "Insurance";
-      case 6: return "Regulator/Auditor";
-      case 7: return "Admin";
-      default: return "Patient (0)";
+      case 1: return "Hospital (1)";
+      case 2: return "Diagnostic Lab (2)";
+      case 3: return "Doctor (3)";
+      case 4: return "Pharmacy (4)";
+      case 5: return "Insurance (5)";
+      case 6: return "Regulator/Auditor (6)";
+      case 7: return "Admin (7)";
+      default: return `Patient (${id || 0})`;
     }
   };
 
   const approveRequest = async (req) => {
+    if (!account || (!rbacContract && !RBAC_ADDRESS)) {
+      toast.error("Admin contract not loaded");
+      return;
+    }
+    
     try {
       const provider = new ethers.BrowserProvider(window.ethereum);
       const signer = await provider.getSigner();
-      const contract = new ethers.Contract(RBAC_ADDRESS, roleABI, signer);
+      const contract = rbacContract?.connect(signer) || new ethers.Contract(RBAC_ADDRESS, roleABI, signer);
 
       let safeWallet = req.wallet;
       try { safeWallet = ethers.getAddress(req.wallet); } catch (e) {
@@ -137,10 +153,15 @@ export default function AdminDashboard({ account }) {
 };
 
   const revokeRole = async (wallet) => {
+    if (!account || (!rbacContract && !RBAC_ADDRESS)) {
+      toast.error("Admin contract not loaded");
+      return;
+    }
+    
     try {
       const provider = new ethers.BrowserProvider(window.ethereum);
       const signer = await provider.getSigner();
-      const contract = new ethers.Contract(RBAC_ADDRESS, roleABI, signer);
+      const contract = rbacContract?.connect(signer) || new ethers.Contract(RBAC_ADDRESS, roleABI, signer);
 
       let tx;
       try {
@@ -199,6 +220,15 @@ export default function AdminDashboard({ account }) {
 
   useEffect(() => {
     loadData();
+
+    // Real-time sync for role requests across tabs
+    const handleStorageChange = (e) => {
+      if (e.key === 'dpdp_role_requests') {
+        loadData();
+      }
+    };
+    window.addEventListener('storage', handleStorageChange);
+    return () => window.removeEventListener('storage', handleStorageChange);
   }, []);
 
   return (
@@ -282,6 +312,7 @@ export default function AdminDashboard({ account }) {
           <table className="data-table">
             <thead>
               <tr>
+                <th>Organization / Entity</th>
                 <th>Wallet Address</th>
                 <th>Mapped Role</th>
                 <th>Status</th>
@@ -291,11 +322,12 @@ export default function AdminDashboard({ account }) {
             <tbody>
               {activeRoles.length === 0 ? (
                 <tr>
-                  <td colSpan="4" style={{ textAlign: 'center', padding: '3rem', color: 'var(--text-muted)' }}>No active ledger mappings detected.</td>
+                  <td colSpan="6" style={{ textAlign: 'center', padding: '3rem', color: 'var(--text-muted)' }}>No active ledger mappings detected.</td>
                 </tr>
               ) : (
                 activeRoles.map((roleInfo, index) => (
                   <tr key={index}>
+                    <td><strong>{roleInfo.orgName}</strong></td>
                     <td><code style={{ fontSize: '0.85rem' }}>{roleInfo.wallet}</code></td>
                     <td><span className="role-badge" style={{ background: 'var(--grad-teal)', fontSize: '0.75rem' }}>{getRoleName(roleInfo.roleId)}</span></td>
                     <td>

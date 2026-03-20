@@ -318,9 +318,12 @@ const HospitalDashboard = ({
             🏢 Request Insurance
           </button>
 
-          <button className="secondary-btn" onClick={() => setShowOrgRegForm(true)} style={{ marginLeft: 'auto' }}>
-            Staff Registration
-          </button>
+            <button className="secondary-btn" onClick={() => {
+              setReqWallet(account);
+              setShowOrgRegForm(true);
+            }} style={{ marginLeft: 'auto' }}>
+              Staff Registration
+            </button>
         </div>
       </div>
 

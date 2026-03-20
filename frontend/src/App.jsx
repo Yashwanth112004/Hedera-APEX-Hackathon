@@ -661,7 +661,7 @@ function App() {
       case "pharmacy": return <PharmacyDashboard {...commonProps} onRequestConsent={requestConsent} onAccessPatientData={accessPatientData} />;
       case "insurance": return <InsuranceDashboard {...commonProps} onRequestConsent={requestConsent} onAccessPatientData={accessPatientData} />;
       case "auditor": return <RegulatorDashboard {...commonProps} />;
-      case "admin": return <AdminDashboard account={account} />;
+      case "admin": return <AdminDashboard {...commonProps} account={account} />;
       default: return <PatientDashboard {...commonProps} account={actingAsAccount || account} isActingAsBeneficiary={!!actingAsAccount} consents={consents} onGrantConsent={grantConsent} onRevokeConsent={revokeConsent} onEraseConsent={eraseConsent} onLoadConsents={loadConsents} onMonitorSpam={monitorAccessSpam} />;
     }
   };
