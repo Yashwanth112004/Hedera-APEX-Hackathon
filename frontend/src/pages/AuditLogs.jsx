@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { ethers } from 'ethers';
 
-const AuditLogs = ({ auditLogContract, fiduciaryFilter }) => {
+const AuditLogs = ({ auditLogContract, account, role }) => {
   const [logs, setLogs] = useState([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState('all');
@@ -24,9 +24,16 @@ const AuditLogs = ({ auditLogContract, fiduciaryFilter }) => {
         txHash: 'On-Chain Record',
         status: 'Success'
       }));
-      const finalLogs = fiduciaryFilter 
-        ? formattedLogs.filter(l => l.hospitalAddress.toLowerCase() === fiduciaryFilter.toLowerCase())
-        : formattedLogs;
+
+      const isAdmin = role?.toLowerCase() === 'admin';
+      const userAddr = account?.toLowerCase();
+
+      const finalLogs = isAdmin 
+        ? formattedLogs 
+        : formattedLogs.filter(l => 
+            l.patientAddress.toLowerCase() === userAddr || 
+            l.hospitalAddress.toLowerCase() === userAddr
+          );
         
       setLogs(finalLogs.reverse()); // Show newest first
     } catch (err) {

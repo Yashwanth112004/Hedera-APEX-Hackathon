@@ -5,7 +5,7 @@ import { QRCodeCanvas } from 'qrcode.react';
 import { Wallet, LogOut, Shield, Activity, Clock, FileText, Lock, Plus, Search, Check, AlertTriangle, Eye, Download, UserPlus, Trash2, Edit3, X, Info } from 'lucide-react';
 import DPDPNotice from '../components/DPDPNotice';
 import { fetchFromPinata, decryptData } from '../utils/ipfsHelper';
-import { normalizeAddress, generateLocalShortID } from '../utils/idMappingHelper';
+import { normalizeAddress, generateLocalShortID, resolveWalletAddress } from '../utils/idMappingHelper';
 import { getSafePendingRequests, safeApproveRequest } from '../utils/consentHelper';
 
 const PatientDashboard = ({
@@ -184,19 +184,30 @@ const PatientDashboard = ({
     localStorage.setItem('beneficiary_lookup', JSON.stringify(globalLookup));
   };
 
-  const handleAddBeneficiary = (e) => {
+  const handleAddBeneficiary = async (e) => {
     e.preventDefault();
     if (beneficiaries.length >= 2 && editingBeneficiaryIndex === null) {
       toast.error("Maximum 2 beneficiaries allowed");
       return;
     }
 
+    let finalWallet;
+    try {
+      toast.info("Verifying beneficiary ID...");
+      finalWallet = await resolveWalletAddress(beneficiaryFormData.wallet, walletMapperContract);
+    } catch (err) {
+      toast.error("Invalid Beneficiary ID: " + err.message);
+      return;
+    }
+
+    const normalizedData = { ...beneficiaryFormData, wallet: finalWallet };
+
     let updated;
     if (editingBeneficiaryIndex !== null) {
       updated = [...beneficiaries];
-      updated[editingBeneficiaryIndex] = beneficiaryFormData;
+      updated[editingBeneficiaryIndex] = normalizedData;
     } else {
-      updated = [...beneficiaries, beneficiaryFormData];
+      updated = [...beneficiaries, normalizedData];
     }
 
     saveBeneficiaries(updated);
@@ -1063,37 +1074,62 @@ const PatientDashboard = ({
 
       {showGrantForm && (
         <div className="modal-overlay">
-          <div className="modal">
+          <div className="modal" style={{ maxWidth: '500px' }}>
             <div className="modal-header">
-              <h3>Grant Consent</h3>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                <div style={{ background: 'var(--medical-primary)15', color: 'var(--medical-primary)', padding: '0.6rem', borderRadius: '12px' }}>
+                  <Shield size={22} />
+                </div>
+                <h3>Grant New Consent</h3>
+              </div>
               <button className="close-btn" onClick={() => setShowGrantForm(false)}>×</button>
             </div>
             <form onSubmit={handleGrantConsent} className="modal-body">
-              <div className="form-group">
-                <label>Hospital Address *</label>
+              <div className="alert-info" style={{ 
+                background: 'rgba(20, 184, 166, 0.05)', 
+                padding: '1rem', 
+                borderRadius: '12px', 
+                marginBottom: '1.5rem', 
+                fontSize: '0.85rem',
+                border: '1px solid rgba(20, 184, 166, 0.1)',
+                display: 'flex',
+                gap: '0.75rem'
+              }}>
+                <Info size={16} color="var(--medical-primary)" style={{ flexShrink: 0 }} />
+                <span>You are authorizing a clinical entity to access your data under DPDP Purpose Limitation.</span>
+              </div>
+
+              <div className="form-group" style={{ marginBottom: '1.2rem' }}>
+                <label style={{ display: 'block', marginBottom: '0.5rem', fontSize: '0.85rem', fontWeight: '600' }}>Hospital/Provider Address *</label>
                 <input
                   type="text"
+                  className="glass-input"
                   value={formData.hospitalAddress}
                   onChange={(e) => setFormData({ ...formData, hospitalAddress: e.target.value })}
                   placeholder="0x..."
+                  style={{ fontSize: '0.9rem' }}
                   required
                 />
               </div>
-              <div className="form-group">
-                <label>Purpose of Data Use (DPDP Purpose Limitation) *</label>
+              <div className="form-group" style={{ marginBottom: '1.2rem' }}>
+                <label style={{ display: 'block', marginBottom: '0.5rem', fontSize: '0.85rem', fontWeight: '600' }}>Purpose of Data Use *</label>
                 <input
                   type="text"
+                  className="glass-input"
                   value={formData.purpose}
                   onChange={(e) => setFormData({ ...formData, purpose: e.target.value })}
-                  placeholder="e.g., Medical Treatment"
+                  placeholder="e.g., Clinical Consultation"
+                  style={{ fontSize: '0.9rem' }}
                   required
                 />
               </div>
-              <div className="form-group">
-                <label>Data Categories</label>
+              <div className="form-group" style={{ marginBottom: '1.2rem' }}>
+                <label style={{ display: 'block', marginBottom: '0.5rem', fontSize: '0.85rem', fontWeight: '600' }}>Data Categories</label>
                 <select
+                  className="glass-input"
                   value={formData.dataCategories}
                   onChange={(e) => setFormData({ ...formData, dataCategories: e.target.value })}
+                  style={{ fontSize: '0.9rem' }}
                 >
                   <option value="medical_records">Medical Records</option>
                   <option value="lab_results">Lab Results</option>
@@ -1101,18 +1137,20 @@ const PatientDashboard = ({
                   <option value="all">All Health Data</option>
                 </select>
               </div>
-              <div className="form-group">
-                <label>Consent Duration (seconds)</label>
+              <div className="form-group" style={{ marginBottom: '2rem' }}>
+                <label style={{ display: 'block', marginBottom: '0.5rem', fontSize: '0.85rem', fontWeight: '600' }}>Consent Duration (Seconds)</label>
                 <input
                   type="number"
+                  className="glass-input"
                   value={formData.duration}
                   onChange={(e) => setFormData({ ...formData, duration: e.target.value })}
                   placeholder="86400 (24 hours)"
+                  style={{ fontSize: '0.9rem' }}
                 />
               </div>
-              <div className="modal-actions">
-                <button type="submit" className="primary-btn">Grant Consent</button>
-                <button type="button" className="secondary-btn" onClick={() => setShowGrantForm(false)}>
+              <div className="modal-actions" style={{ marginTop: 0 }}>
+                <button type="submit" className="primary-btn" style={{ flex: 1 }}>Grant Authorization</button>
+                <button type="button" className="secondary-btn" onClick={() => setShowGrantForm(false)} style={{ flex: 1 }}>
                   Cancel
                 </button>
               </div>
@@ -1123,9 +1161,14 @@ const PatientDashboard = ({
 
       {showSelectionModal && (
         <div className="modal-overlay">
-          <div className="modal">
+          <div className="modal" style={{ maxWidth: '600px' }}>
             <div className="modal-header">
-              <h3>Link Records to Access Request</h3>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                <div style={{ background: 'var(--medical-primary)15', color: 'var(--medical-primary)', padding: '0.6rem', borderRadius: '12px' }}>
+                  <Plus size={22} />
+                </div>
+                <h3>Link Records to Request</h3>
+              </div>
               <button className="close-btn" onClick={() => setShowSelectionModal(false)}>×</button>
             </div>
             <div className="modal-body">
@@ -1269,40 +1312,64 @@ const PatientDashboard = ({
       )}
       {showBeneficiaryModal && (
         <div className="modal-overlay">
-          <div className="modal">
+          <div className="modal" style={{ maxWidth: '450px' }}>
             <div className="modal-header">
-              <h3>{editingBeneficiaryIndex !== null ? "Edit Beneficiary" : "Add Beneficiary"}</h3>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                <div style={{ background: 'var(--medical-primary)15', color: 'var(--medical-primary)', padding: '0.6rem', borderRadius: '12px' }}>
+                  <UserPlus size={22} />
+                </div>
+                <h3>{editingBeneficiaryIndex !== null ? "Edit Beneficiary" : "Add Beneficiary"}</h3>
+              </div>
               <button className="close-btn" onClick={() => setShowBeneficiaryModal(false)}>×</button>
             </div>
             <form onSubmit={handleAddBeneficiary} className="modal-body">
-              <div className="form-group">
-                <label>Wallet Address *</label>
+              <div className="form-group" style={{ marginBottom: '1.5rem' }}>
+                <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.6rem', fontSize: '0.9rem', fontWeight: '600' }}>
+                  <Wallet size={16} color="var(--medical-primary)" /> Wallet Address *
+                </label>
                 <input
                   type="text"
+                  className="glass-input"
                   value={beneficiaryFormData.wallet}
                   onChange={(e) => setBeneficiaryFormData({ ...beneficiaryFormData, wallet: e.target.value })}
                   placeholder="0x..."
+                  style={{ fontSize: '0.9rem' }}
                   required
                 />
               </div>
-              <div className="form-group">
-                <label>Access Password *</label>
+              <div className="form-group" style={{ marginBottom: '1rem' }}>
+                <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.6rem', fontSize: '0.9rem', fontWeight: '600' }}>
+                  <Lock size={16} color="var(--medical-primary)" /> Access Password *
+                </label>
                 <input
                   type="password"
+                  className="glass-input"
                   value={beneficiaryFormData.password}
                   onChange={(e) => setBeneficiaryFormData({ ...beneficiaryFormData, password: e.target.value })}
-                  placeholder="Password for beneficiary"
+                  placeholder="Create a secure password"
+                  style={{ fontSize: '0.9rem' }}
                   required
                 />
               </div>
-              <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginBottom: '1.5rem' }}>
-                Beneficiaries can access your records by providing their wallet and this password.
-              </p>
-              <div className="modal-actions">
-                <button type="submit" className="primary-btn">
-                  {editingBeneficiaryIndex !== null ? "Update" : "Add Beneficiary"}
+              <div style={{ 
+                background: 'var(--background-soft)', 
+                padding: '1rem', 
+                borderRadius: '12px', 
+                border: '1px solid var(--border-light)',
+                display: 'flex',
+                gap: '0.75rem',
+                marginBottom: '2rem'
+              }}>
+                <Info size={16} color="var(--medical-primary)" style={{ flexShrink: 0, marginTop: '2px' }} />
+                <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', lineHeight: '1.5' }}>
+                  Beneficiaries can access your records by providing their wallet and this password. Keep this password secure.
+                </p>
+              </div>
+              <div className="modal-actions" style={{ marginTop: 0 }}>
+                <button type="submit" className="primary-btn" style={{ width: '100%', height: '52px' }}>
+                  {editingBeneficiaryIndex !== null ? "Update Beneficiary" : "Add Beneficiary"}
                 </button>
-                <button type="button" className="secondary-btn" onClick={() => setShowBeneficiaryModal(false)}>
+                <button type="button" className="secondary-btn" onClick={() => setShowBeneficiaryModal(false)} style={{ width: '100%', height: '52px' }}>
                   Cancel
                 </button>
               </div>
@@ -1398,35 +1465,69 @@ const PatientDashboard = ({
 
       {showNomineeModal && (
         <div className="modal-overlay">
-          <div className="modal">
+          <div className="modal" style={{ maxWidth: '500px' }}>
             <div className="modal-header">
-              <h3>Section 10: Register Legal Nominee</h3>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                <div style={{ background: 'var(--medical-primary)15', color: 'var(--medical-primary)', padding: '0.6rem', borderRadius: '12px' }}>
+                  <Shield size={22} />
+                </div>
+                <h3>DPDP Section 10: Legal Nominee</h3>
+              </div>
               <button className="close-btn" onClick={() => setShowNomineeModal(false)}>×</button>
             </div>
             <div className="modal-body">
-              <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem', marginBottom: '1rem' }}>
-                Designate a person to act on your behalf in the event of incapacity or death. This is an on-chain legal attribution.
-              </p>
-              <div className="form-group">
-                <label>Nominee Name</label>
-                <input type="text" className="glass-input" value={nominee.name} onChange={e => setNominee({ ...nominee, name: e.target.value })} placeholder="Full Legal Name" />
+              <div style={{ 
+                background: 'rgba(59, 130, 246, 0.05)', 
+                padding: '1.25rem', 
+                borderRadius: '12px', 
+                border: '1px solid rgba(59, 130, 246, 0.1)',
+                display: 'flex',
+                gap: '1rem',
+                marginBottom: '2rem'
+              }}>
+                <Info size={18} color="var(--medical-accent)" style={{ flexShrink: 0, marginTop: '2px' }} />
+                <p style={{ color: 'var(--text-main)', fontSize: '0.9rem', lineHeight: '1.6', margin: 0 }}>
+                  Designate a person to act on your behalf in the event of incapacity or death. This identification is anchored to the Hedera ledger as a permanent attribution.
+                </p>
               </div>
-              <div className="form-group">
-                <label>Wallet Address</label>
+
+              <div className="form-group" style={{ marginBottom: '1.5rem' }}>
+                <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.6rem', fontSize: '0.9rem', fontWeight: '600' }}>
+                  Nominee Full Name
+                </label>
+                <input type="text" className="glass-input" value={nominee.name} onChange={e => setNominee({ ...nominee, name: e.target.value })} placeholder="Enter legal name" />
+              </div>
+              <div className="form-group" style={{ marginBottom: '1.5rem' }}>
+                <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.6rem', fontSize: '0.9rem', fontWeight: '600' }}>
+                  <Wallet size={16} color="var(--medical-primary)" /> Wallet Address
+                </label>
                 <input type="text" className="glass-input" value={nominee.wallet} onChange={e => setNominee({ ...nominee, wallet: e.target.value })} placeholder="0x..." />
               </div>
-              <div className="form-group">
-                <label>Relationship</label>
-                <select className="glass-input" value={nominee.relation} onChange={e => setNominee({ ...nominee, relation: e.target.value })}>
-                  <option value="Spouse">Spouse</option>
-                  <option value="Child">Child</option>
-                  <option value="Legal Agent">Legal Agent</option>
-                  <option value="Other">Other</option>
-                </select>
+              <div className="form-group" style={{ marginBottom: '2rem' }}>
+                <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.6rem', fontSize: '0.9rem', fontWeight: '600' }}>
+                  Relationship to Patient
+                </label>
+                <div style={{ position: 'relative' }}>
+                  <select className="glass-input" value={nominee.relation} onChange={e => setNominee({ ...nominee, relation: e.target.value })} style={{ appearance: 'none' }}>
+                    <option value="" disabled>Select relation</option>
+                    <option value="Spouse">Spouse</option>
+                    <option value="Child">Child</option>
+                    <option value="Parent">Parent</option>
+                    <option value="Legal Agent">Legal Agent</option>
+                    <option value="Other">Other</option>
+                  </select>
+                  <div style={{ position: 'absolute', right: '1rem', top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none', color: 'var(--text-muted)' }}>
+                    ▼
+                  </div>
+                </div>
               </div>
-              <div className="modal-actions">
-                <button className="primary-btn" onClick={() => { toast.success("Nominee Registered on Ledger"); setShowNomineeModal(false); }}>Register Nominee</button>
-                <button className="secondary-btn" onClick={() => setShowNomineeModal(false)}>Cancel</button>
+              <div className="modal-actions" style={{ marginTop: 0 }}>
+                <button className="primary-btn" style={{ flex: 1 }} onClick={() => { toast.success("Nominee Registered on Ledger"); setShowNomineeModal(false); }}>
+                  Register Nominee
+                </button>
+                <button className="secondary-btn" style={{ flex: 1 }} onClick={() => setShowNomineeModal(false)}>
+                  Cancel
+                </button>
               </div>
             </div>
           </div>
@@ -1434,33 +1535,57 @@ const PatientDashboard = ({
       )}
       {showClaimModal && (
         <div className="modal-overlay">
-          <div className="modal">
+          <div className="modal" style={{ maxWidth: '500px' }}>
             <div className="modal-header">
-              <h3>File Insurance Claim</h3>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                <div style={{ background: 'var(--medical-aqua)15', color: 'var(--medical-aqua)', padding: '0.6rem', borderRadius: '12px' }}>
+                  <Activity size={22} />
+                </div>
+                <h3>File Insurance Claim</h3>
+              </div>
               <button className="close-btn" onClick={() => setShowClaimModal(false)}>×</button>
             </div>
             <div className="modal-body">
-              <div className="alert-info" style={{ background: 'var(--medical-primary)10', padding: '1rem', borderRadius: '8px', marginBottom: '1.5rem', fontSize: '0.85rem' }}>
-                This will proactively grant access to the selected record (Bill: ₹{claimTarget.amount}) to your insurance provider.
+              <div style={{ 
+                background: 'rgba(6, 182, 212, 0.05)', 
+                padding: '1.25rem', 
+                borderRadius: '12px', 
+                border: '1px solid rgba(6, 182, 212, 0.1)',
+                display: 'flex',
+                gap: '1rem',
+                marginBottom: '2rem'
+              }}>
+                <Info size={18} color="var(--medical-aqua)" style={{ flexShrink: 0, marginTop: '2px' }} />
+                <p style={{ color: 'var(--text-main)', fontSize: '0.9rem', lineHeight: '1.6', margin: 0 }}>
+                  This action will proactively authorize your Insurance Provider to access Record CID: <code style={{ color: 'var(--medical-aqua)', fontWeight: 'bold' }}>{claimTarget.cid.slice(0, 10)}...</code> for settlement of <strong>₹{claimTarget.amount}</strong>.
+                </p>
               </div>
-              <div className="form-group">
-                <label>Insurance Provider (Wallet or Short ID) *</label>
+
+              <div className="form-group" style={{ marginBottom: '1.5rem' }}>
+                <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.6rem', fontSize: '0.9rem', fontWeight: '600' }}>
+                  Insurance Provider (Wallet or Short ID) *
+                </label>
                 <input 
                   type="text" 
                   className="glass-input" 
                   placeholder="e.g. INS123 or 0x..." 
                   value={claimTarget.provider}
                   onChange={e => setClaimTarget({ ...claimTarget, provider: e.target.value })}
+                  style={{ fontSize: '0.9rem' }}
                   required 
                 />
               </div>
-              <div className="form-group">
-                <label>Policy Number (Optional)</label>
-                <input type="text" className="glass-input" placeholder="e.g. POL-9988" />
+              <div className="form-group" style={{ marginBottom: '2rem' }}>
+                <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.6rem', fontSize: '0.9rem', fontWeight: '600' }}>
+                  Policy Number (Optional)
+                </label>
+                <input type="text" className="glass-input" placeholder="e.g. POL-9988" style={{ fontSize: '0.9rem' }} />
               </div>
-              <div className="modal-actions">
+              
+              <div className="modal-actions" style={{ marginTop: 0 }}>
                 <button 
                   className="primary-btn" 
+                  style={{ flex: 1, background: 'var(--medical-aqua)', boxShadow: '0 8px 16px -4px rgba(6, 182, 212, 0.3)' }}
                   disabled={!claimTarget.provider}
                   onClick={async () => {
                     try {
@@ -1468,7 +1593,6 @@ const PatientDashboard = ({
                       const { resolveWalletAddress } = await import('../utils/idMappingHelper');
                       const insuranceWallet = await resolveWalletAddress(claimTarget.provider, walletMapperContract);
                       
-                      // Proactively grant consent for this specific record (CID)
                       await onGrantConsent(
                         insuranceWallet, 
                         `Insurance Claim Filing for CID ${claimTarget.cid.slice(0,8)}`, 
@@ -1483,7 +1607,10 @@ const PatientDashboard = ({
                     }
                   }}
                 >
-                  Confirm & Send Access
+                  🚀 Authorize & Submit Claim
+                </button>
+                <button className="secondary-btn" onClick={() => setShowClaimModal(false)} style={{ flex: 1 }}>
+                  Cancel
                 </button>
               </div>
             </div>

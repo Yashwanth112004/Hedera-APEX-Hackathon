@@ -231,7 +231,35 @@ function App() {
           if (accounts.length > 0 && accounts[0].toLowerCase() === savedAccount.toLowerCase()) {
             const signer = await provider.getSigner();
             await initializeSession(signer, accounts[0], savedRole);
-            console.log("Session restored for", accounts[0]);
+
+            // Re-fetch available roles so "Switch Role" works after refresh
+            const rolesToSelect = ["Patient"];
+            try {
+              const roleContract = new ethers.Contract(RBAC_CONTRACT_ADDRESS, roleABI, provider);
+              let safeWallet = accounts[0].toLowerCase();
+              try { safeWallet = ethers.getAddress(accounts[0]); } catch (e) { }
+
+              let roleId = await roleContract.getRole(safeWallet);
+              if (Number(roleId) === 0) {
+                try {
+                  const legacyRBAC = "0xc285Cba71f206fd6AB83514D82Dd389Fe0584919";
+                  const legacyContract = new ethers.Contract(legacyRBAC, roleABI, provider);
+                  const legacyRoleId = await legacyContract.getRole(safeWallet);
+                  if (Number(legacyRoleId) !== 0) roleId = legacyRoleId;
+                } catch (e) { }
+              }
+
+              const stringRole = mapRole(roleId);
+              if (stringRole !== "Patient") rolesToSelect.push(stringRole);
+
+              const isAdminWallet = safeWallet.toLowerCase() === HARDCODED_ADMIN.toLowerCase();
+              if (isAdminWallet && !rolesToSelect.includes("Admin")) rolesToSelect.push("Admin");
+            } catch (roleError) {
+              console.warn("Auto-reconnect: Failed to fetch roles", roleError);
+            }
+            setAvailableRoles(rolesToSelect);
+
+            console.log("Session restored for", accounts[0], "roles:", rolesToSelect);
           }
         } catch (err) {
           console.warn("Auto-reconnect failed", err);
@@ -291,18 +319,96 @@ function App() {
     localStorage.removeItem('hedera_hc_authenticated');
   };
 
-  const handleBeneficiaryLogin = (e) => {
+  const handleBeneficiaryLogin = async (e) => {
     e.preventDefault();
-    const lookup = JSON.parse(localStorage.getItem('beneficiary_lookup') || '{}');
-    const entry = lookup[account.toLowerCase()];
 
-    if (entry && entry.mainAccount.toLowerCase() === beneficiaryLoginData.mainAccount.toLowerCase() && entry.password === beneficiaryLoginData.password) {
-      setActingAsAccount(beneficiaryLoginData.mainAccount);
+    // The beneficiary must first connect their wallet so we know WHO they are
+    let beneficiaryWallet = account;
+    if (!beneficiaryWallet) {
+      if (!window.ethereum) {
+        toast.error("Install MetaMask to use Beneficiary Access");
+        return;
+      }
+      try {
+        const provider = new ethers.BrowserProvider(window.ethereum);
+        const accounts = await provider.send("eth_requestAccounts", []);
+        const signer = await provider.getSigner();
+        beneficiaryWallet = accounts[0];
+
+        // Authenticate via digital signature
+        const nonce = Math.floor(Math.random() * 1000000);
+        const timestamp = new Date().toISOString().split('T')[0];
+        const message = `Sign this message to authenticate your identity for DPDP Healthcare Consent Network\nNonce: ${nonce}\nTimestamp: ${timestamp}`;
+        await signer.signMessage(message);
+
+        // Initialize session contracts for the beneficiary wallet
+        await initializeSession(signer, beneficiaryWallet, null);
+        setAuthenticated(true);
+        localStorage.setItem('hedera_hc_authenticated', 'true');
+      } catch (err) {
+        toast.error("Wallet connection required for Beneficiary Access");
+        return;
+      }
+    }
+
+    const lookup = JSON.parse(localStorage.getItem('beneficiary_lookup') || '{}');
+    let entry = lookup[beneficiaryWallet.toLowerCase()];
+
+    // RESOLUTION: Resolve Main Account (Patient ID/Address) from the input field
+    let resolvedMainAccount;
+    const provider = new ethers.BrowserProvider(window.ethereum);
+    const mapperContract = new ethers.Contract(WALLET_MAPPER_ADDRESS, WALLET_MAPPER_ABI, provider);
+
+    try {
+      resolvedMainAccount = await resolveWalletAddress(beneficiaryLoginData.mainAccount, mapperContract);
+      console.log("[Beneficiary-Login] Resolving Patient ID:", beneficiaryLoginData.mainAccount, "->", resolvedMainAccount);
+    } catch (err) {
+      toast.error("Could not resolve Patient ID: " + err.message);
+      return;
+    }
+
+    // FALLBACK: If entry wasn't found by wallet address, try looking up by beneficiary's own Short ID
+    // (This handles beneficiaries registered using their Short ID key before the fixes)
+    if (!entry) {
+      try {
+        const myShortId = await mapperContract.getShortIDFromWallet(beneficiaryWallet);
+        if (myShortId) {
+          entry = lookup[myShortId.toLowerCase()];
+          if (entry) console.log("[Beneficiary-Login] Found entry via Short ID fallback:", myShortId);
+        }
+      } catch (e) { console.warn("Beneficiary Short ID fallback failed", e); }
+    }
+
+    if (!entry) {
+      console.error("[Beneficiary-Login] No entry found in beneficiary_lookup for wallet:", beneficiaryWallet);
+      toast.error("You are not registered as a beneficiary for any account with this wallet.");
+      return;
+    }
+
+    const storedMainAcc = String(entry.mainAccount || "").toLowerCase().trim();
+    const inputMainAcc = String(resolvedMainAccount || "").toLowerCase().trim();
+    const storedPass = String(entry.password || "").trim();
+    const inputPass = String(beneficiaryLoginData.password || "").trim();
+
+    console.log("[Beneficiary-Login] Diagnostic Comparison:", {
+      providedPatientId: beneficiaryLoginData.mainAccount,
+      resolvedPatientWallet: inputMainAcc,
+      storedPatientWallet: storedMainAcc,
+      passwordsMatch: storedPass === inputPass
+    });
+
+    if (storedMainAcc === inputMainAcc && storedPass === inputPass) {
+      setActingAsAccount(resolvedMainAccount);
       setRole("patient");
       setShowBeneficiaryLogin(false);
-      toast.success(`Access granted for account: ${beneficiaryLoginData.mainAccount}`);
+      localStorage.setItem('hedera_hc_role', 'patient');
+      toast.success(`Access granted for account: ${resolvedMainAccount}`);
+    } else if (storedMainAcc !== inputMainAcc) {
+      console.error("[Beneficiary-Login] Account mismatch detected.");
+      toast.error(`Account Mismatch: Stored (${storedMainAcc.slice(0, 8)}...) != Input (${inputMainAcc.slice(0, 8)}...). Please Refresh (Ctrl+F5) and try again.`);
     } else {
-      toast.error("Invalid credentials or you are not a registered beneficiary for this account.");
+      console.error("[Beneficiary-Login] Password mismatch detected.");
+      toast.error("Invalid password for this beneficiary. (If you just updated it, Please Refresh Ctrl+F5)");
     }
   };
 
@@ -676,8 +782,8 @@ function App() {
           <div className="app-body" style={{ marginTop: '80px' }}>
             {role && <Sidebar role={role} activeTab={activeTab} onTabChange={handleTabChange} />}
             <main className="main-content">
-              {(activeTab === "audit" && (role?.toLowerCase() === 'patient' || role?.toLowerCase() === 'admin')) ? <AuditLogs auditLogContract={auditLogContract} /> :
-                (activeTab === "internal-audit" && ['hospital', 'doctor', 'lab', 'pharmacy', 'insurance'].includes(role?.toLowerCase())) ? <AuditLogs auditLogContract={auditLogContract} fiduciaryFilter={account} /> :
+              {(activeTab === "audit" && (role?.toLowerCase() === 'patient' || role?.toLowerCase() === 'admin')) ? <AuditLogs auditLogContract={auditLogContract} account={actingAsAccount || account} role={role} /> :
+                (activeTab === "internal-audit" && ['hospital', 'doctor', 'lab', 'pharmacy', 'insurance'].includes(role?.toLowerCase())) ? <AuditLogs auditLogContract={auditLogContract} account={account} role={role} /> :
                   activeTab === "compliance" ? <LegalCompliance /> :
                     renderDashboard()}
             </main>

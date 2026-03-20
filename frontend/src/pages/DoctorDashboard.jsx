@@ -4,6 +4,7 @@ import { ethers } from 'ethers';
 import { fetchFromPinata, decryptData, encryptData, uploadToPinata } from '../utils/ipfsHelper';
 import { resolveWalletAddress } from '../utils/idMappingHelper';
 import { getSafePatientConsents, getSafePendingRequests } from '../utils/consentHelper';
+import { Shield, Info, Activity, Wallet, Lock, Plus, Search, Check, AlertTriangle, Eye, Download, UserPlus, Trash2, Edit3, X, FileText } from 'lucide-react';
 
 const DoctorDashboard = ({
     account,
@@ -691,55 +692,79 @@ const DoctorDashboard = ({
 
             {showEmergencyModal && (
                 <div className="modal-overlay">
-                    <div className="modal" style={{ borderColor: '#EF4444' }}>
+                    <div className="modal" style={{ maxWidth: '500px' }}>
                         <div className="modal-header">
-                            <h3 style={{ color: '#EF4444' }}>🚨 EMERGENCY BREAK-GLASS ACCESS</h3>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                                <div style={{ background: '#EF444415', color: '#EF4444', padding: '0.6rem', borderRadius: '12px' }}>
+                                    <AlertTriangle size={22} />
+                                </div>
+                                <h3 style={{ color: '#EF4444' }}>🚨 EMERGENCY ACCESS</h3>
+                            </div>
                             <button className="close-btn" onClick={() => setShowEmergencyModal(false)}>×</button>
                         </div>
                         <div className="modal-body">
-                            <div className="alert-warning" style={{ background: '#FEF2F2', border: '1px solid #FCA5A5', padding: '1rem', borderRadius: '8px', marginBottom: '1.5rem', color: '#991B1B', fontSize: '0.9rem' }}>
-                                <strong>WARNING:</strong> This action overrides normal consent. A permanent, immutable justification will be logged on the Hedera ledger.
+                            <div style={{ 
+                                background: '#FEF2F2', 
+                                padding: '1.25rem', 
+                                borderRadius: '12px', 
+                                border: '1px solid #FCA5A5',
+                                display: 'flex',
+                                gap: '1rem',
+                                marginBottom: '2rem'
+                            }}>
+                                <Info size={18} color="#EF4444" style={{ flexShrink: 0, marginTop: '2px' }} />
+                                <p style={{ color: '#991B1B', fontSize: '0.9rem', lineHeight: '1.6', margin: 0 }}>
+                                    <strong>LEGAL WARNING:</strong> This action overrides normal consent under DPDP emergency provisions. A permanent justification will be anchored to the Hedera ledger.
+                                </p>
                             </div>
-                            <div className="form-group">
-                                <label>Patient Wallet / Short ID *</label>
+
+                            <div className="form-group" style={{ marginBottom: '1.2rem' }}>
+                                <label style={{ display: 'block', marginBottom: '0.5rem', fontSize: '0.85rem', fontWeight: '600' }}>Patient Wallet / Short ID *</label>
                                 <input
                                     className="glass-input"
                                     value={patientWallet}
                                     onChange={(e) => setPatientWallet(e.target.value)}
                                     placeholder="0x... or Short ID"
+                                    style={{ fontSize: '0.9rem' }}
                                 />
                             </div>
-                            <div className="form-group">
-                                <label>Attending Physician Name *</label>
+                            <div className="form-group" style={{ marginBottom: '1.2rem' }}>
+                                <label style={{ display: 'block', marginBottom: '0.5rem', fontSize: '0.85rem', fontWeight: '600' }}>Attending Physician Name *</label>
                                 <input
                                     className="glass-input"
                                     value={attendingName}
                                     onChange={(e) => setAttendingName(e.target.value)}
                                     placeholder="e.g. Dr. Jane Smith"
+                                    style={{ fontSize: '0.9rem' }}
                                     required
                                 />
                             </div>
-                            <div className="form-group">
-                                <label>Emergency Justification *</label>
+                            <div className="form-group" style={{ marginBottom: '2rem' }}>
+                                <label style={{ display: 'block', marginBottom: '0.5rem', fontSize: '0.85rem', fontWeight: '600' }}>Emergency Justification *</label>
                                 <textarea
                                     className="glass-input"
                                     rows="3"
-                                    placeholder="e.g. Life-saving intervention required."
+                                    placeholder="e.g. Unconscious patient needing immediate treatment."
                                     value={emergencyJustification}
                                     onChange={(e) => setEmergencyJustification(e.target.value)}
+                                    style={{ fontSize: '0.9rem', resize: 'none' }}
                                 />
                             </div>
-                            <div className="modal-actions">
-                                <button className="primary-btn" style={{ background: '#EF4444', width: '100%' }} onClick={async () => {
+                            <div className="modal-actions" style={{ marginTop: 0 }}>
+                                <button className="primary-btn" style={{ background: '#EF4444', border: 'none', width: '100%', height: '52px', boxShadow: '0 8px 16px -4px rgba(239, 68, 68, 0.3)' }} onClick={async () => {
                                     if (!patientWallet || !emergencyJustification || !attendingName) return toast.error("Required fields missing");
                                     const success = await onEmergencyAccess(patientWallet, emergencyJustification, attendingName);
                                     if (success) {
                                         setEmergencyJustification("");
                                         setAttendingName("");
                                         fetchAuthorizedRecords(true);
+                                        setShowEmergencyModal(false);
                                     }
                                 }}>
-                                    Initiate Emergency Access
+                                    🔥 Initiate Break-Glass Access
+                                </button>
+                                <button className="secondary-btn" onClick={() => setShowEmergencyModal(false)} style={{ width: '100%', height: '52px' }}>
+                                    Cancel
                                 </button>
                             </div>
                         </div>

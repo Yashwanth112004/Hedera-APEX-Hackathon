@@ -57,17 +57,29 @@ const PharmacyDashboard = ({
 
                     try {
                         const patientConsents = await getSafePatientConsents(readConsent, rx.patient, consentContract.target, provider);
+                        
+                        if (patientConsents.length > 0) {
+                            console.log(`[Pharmacy-Diag] Found ${patientConsents.length} total consents for patient ${rx.patient.slice(0,8)}`);
+                        }
+
                         patientConsents.forEach(c => {
                             const p = (c.purpose || "").toLowerCase();
                             const isPharmaPurpose = p.includes('medication') || 
                                                  p.includes('dispensation') || 
                                                  p.includes('prescription') || 
-                                                 p.includes('pharmacy');
+                                                 p.includes('pharmacy') ||
+                                                 p.includes('clinical') || // Inclusive fallback
+                                                 p === "all" ||
+                                                 p.includes('medical');
 
-                            if (c.dataFiduciary.toLowerCase() === account.toLowerCase() && 
-                                c.isActive && 
-                                isPharmaPurpose && 
-                                Number(c.expiry) > Math.floor(Date.now() / 1000)) {
+                            const isFiduciary = c.dataFiduciary.toLowerCase() === account.toLowerCase();
+                            const isExpired = Number(c.expiry) <= Math.floor(Date.now() / 1000);
+
+                            if (isFiduciary) {
+                                console.log(`[Pharmacy-Diag] Match found: Active=${c.isActive}, Purpose="${p}" (isPharma=${isPharmaPurpose}), Expired=${isExpired}`);
+                            }
+
+                            if (isFiduciary && c.isActive && isPharmaPurpose && !isExpired) {
                                 authorized = true;
                                 if (c.dataHash) {
                                     const cids = c.dataHash.split(',');
@@ -301,22 +313,19 @@ const PharmacyDashboard = ({
                                             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
                                                 {(() => {
                                                     const patientKey = px.patient.toLowerCase();
-                                                    const hasSessionIntent = recentlyRequested[patientKey] === true;
                                                     
-                                                    if (hasSessionIntent) {
-                                                        if (px.isAuthorized) {
-                                                            return (
-                                                                <button className="primary-btn" onClick={() => decryptPrescription(px)} style={{ padding: '0.4rem 0.8rem', fontSize: '0.8rem' }}>
-                                                                    🔓 Decrypt RX
-                                                                </button>
-                                                            );
-                                                        } else {
-                                                            return (
-                                                                <button className="secondary-btn" disabled style={{ padding: '0.4rem 0.8rem', fontSize: '0.8rem', opacity: 0.6, cursor: 'not-allowed' }}>
-                                                                    ⏳ Waiting for Approval
-                                                                </button>
-                                                            );
-                                                        }
+                                                    if (px.isAuthorized) {
+                                                        return (
+                                                            <button className="primary-btn" onClick={() => decryptPrescription(px)} style={{ padding: '0.4rem 0.8rem', fontSize: '0.8rem' }}>
+                                                                🔓 Decrypt RX
+                                                            </button>
+                                                        );
+                                                    } else if (recentlyRequested[patientKey]) {
+                                                        return (
+                                                            <button className="secondary-btn" disabled style={{ padding: '0.4rem 0.8rem', fontSize: '0.8rem', opacity: 0.6, cursor: 'not-allowed' }}>
+                                                                ⏳ Waiting for Approval
+                                                            </button>
+                                                        );
                                                     } else {
                                                         return (
                                                             <button className="secondary-btn" onClick={() => requestAccess(px.patient)} style={{ padding: '0.4rem 0.8rem', fontSize: '0.8rem' }}>
