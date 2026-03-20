@@ -26,6 +26,10 @@ const InsuranceDashboard = ({ account, consentContract, auditLogContract, access
         const saved = localStorage.getItem(`insurance_claims_${account}`);
         return saved ? JSON.parse(saved) : [];
     });
+    const [verifiedClaimIds, setVerifiedClaimIds] = useState(() => {
+        const saved = localStorage.getItem(`insurance_verified_${account}`);
+        return saved ? JSON.parse(saved) : [];
+    });
     const [accessLogs, setAccessLogs] = useState([]);
     const [decryptedRecord, setDecryptedRecord] = useState(null);
     const [showClaimModal, setShowClaimModal] = useState(false);
@@ -77,14 +81,19 @@ const InsuranceDashboard = ({ account, consentContract, auditLogContract, access
             try {
                 const filter = readAudit.filters.AccessRequested(null, account);
                 const events = await readAudit.queryFilter(filter, -10000);
-                ledgerRequests = events.map((ev, idx) => ({
-                    id: idx,
-                    patient: ev.args[0],
-                    purpose: ev.args[2],
-                    timestamp: Number(ev.args[3]),
-                    time: new Date(Number(ev.args[3]) * 1000).toLocaleString(),
-                    status: 'Ledger Verified'
-                }));
+                ledgerRequests = events.map((ev, idx) => {
+                    const purpose = ev.args[2];
+                    const amountMatch = purpose.match(/\| Amount: ([0-9.]+)/);
+                    return {
+                        id: ev.args[3].toString() || idx.toString(), // Use Hedera timestamp as unique ID if possible
+                        patient: ev.args[0],
+                        purpose: purpose,
+                        amount: amountMatch ? amountMatch[1] : null,
+                        timestamp: Number(ev.args[3]),
+                        time: new Date(Number(ev.args[3]) * 1000).toLocaleString(),
+                        status: 'Ledger Verified'
+                    };
+                });
             } catch (evErr) {
                 console.warn("Ledger event sync error", evErr);
             }
@@ -157,7 +166,7 @@ const InsuranceDashboard = ({ account, consentContract, auditLogContract, access
                                 id: `AUTO-${r.cid.slice(0, 8)}-${Date.now() % 10000}`,
                                 patient: r.patient,
                                 cid: r.cid,
-                                status: 'Incoming Request',
+                                status: 'Waiting for Disburse',
                                 amount: r.billAmount ? r.billAmount.toString() : '0',
                                 time: new Date().toLocaleString()
                             });
@@ -249,7 +258,7 @@ const InsuranceDashboard = ({ account, consentContract, auditLogContract, access
             id: `CLM-${Date.now()}`,
             patient: selectedRecordForClaim.patient,
             cid: selectedRecordForClaim.cid,
-            status: 'Pending Review',
+            status: 'Waiting for Disburse',
             amount: amount,
             time: new Date().toLocaleString()
         };
@@ -306,11 +315,15 @@ const InsuranceDashboard = ({ account, consentContract, auditLogContract, access
             // User requested "reflected in patient wallet"
             const provider = new ethers.BrowserProvider(window.ethereum);
             const signer = await provider.getSigner();
+
+            // Allow Insurer to edit amount
+            const finalAmount = window.prompt(`Verify disbursement amount (INR) for ${claim.id}:`, claim.amount);
+            if (finalAmount === null) return; // User cancelled
             
             // Let's send a small amount of HBAR proportional to the claim (e.g. 1 HBAR per 1000 INR for demo)
-            const hbarAmount = (Number(claim.amount) / 1000).toFixed(4);
+            const hbarAmount = (Number(finalAmount) / 1000).toFixed(4);
             
-            toast.info(`Disbursing ${hbarAmount} HBAR to ${patientWallet.slice(0, 10)}...`);
+            toast.info(`Disbursing ${hbarAmount} HBAR to ${patientWallet.slice(0, 10)}... (Final: ₹${finalAmount})`);
             
             const tx = await signer.sendTransaction({
                 to: patientWallet,
@@ -320,19 +333,94 @@ const InsuranceDashboard = ({ account, consentContract, auditLogContract, access
             
             await tx.wait();
             
-            // 3. Update Status
+            // 3. Log Disbursement to Audit Ledger for transparency
+            try {
+                const auditWithSigner = auditLogContract.connect(signer);
+                const logTx = await auditWithSigner.logDataAccessed(
+                    patientWallet,
+                    account,
+                    `[DISBURSEMENT] Final Amount: ₹${finalAmount} for Claim ${claim.id}`,
+                    Math.floor(Date.now() / 1000),
+                    { gasLimit: 1000000 }
+                );
+                await logTx.wait();
+                toast.success("Disbursement Audit Logged on Ledger");
+            } catch (logErr) {
+                console.warn("Disbursement logged only to transaction history, audit ledger failed", logErr);
+            }
+            
+            // 4. Update Status
             const updated = claims.map(c => 
-                c.id === claim.id ? { ...c, status: 'Disbursed' } : c
+                c.id === claim.id ? { ...c, status: 'Approved' } : c
             );
             setClaims(updated);
             localStorage.setItem(`insurance_claims_${account}`, JSON.stringify(updated));
-            
-            toast.success("Funds dispersed! Transaction anchored on Hedera.");
+            toast.success("Funds Disbursed to Healthcare Provider");
+            fetchInsuranceData();
         } catch (err) {
             console.error("Disbursement Failed", err);
             toast.error("Disbursement Failed: " + (err.reason || err.message));
         } finally {
             setLoading(false);
+        }
+    };
+
+    const handleVerifyClaim = (claimId) => {
+        const updated = [...verifiedClaimIds, claimId];
+        setVerifiedClaimIds(updated);
+        localStorage.setItem(`insurance_verified_${account}`, JSON.stringify(updated));
+        
+        // Find the request in allRequests to create a formal claim if it has evidence
+        const request = allRequests.find(r => r.id === claimId);
+        if (request && request.purpose.includes('| Evidence:')) {
+            const hasEvidence = request.purpose.includes('| Evidence:');
+            const evidenceCIDs = hasEvidence ? request.purpose.split('| Evidence: ')[1].split(', ') : [];
+            
+            const newClaim = {
+                id: `CLM-${claimId}`,
+                patient: request.patient,
+                cid: evidenceCIDs[0] || 'N/A', // Link to first evidence CID
+                status: 'Waiting for Disburse',
+                amount: request.amount || '0',
+                time: new Date().toLocaleString(),
+                verified: true
+            };
+
+            const updatedClaims = [...claims.filter(c => c.id !== newClaim.id), newClaim];
+            setClaims(updatedClaims);
+            localStorage.setItem(`insurance_claims_${account}`, JSON.stringify(updatedClaims));
+            toast.success("Documents Verified. Claim synced to management tab.");
+        } else {
+            toast.success("Documents Verified. Disbursement unlocked.");
+        }
+    };
+
+    const handleViewEvidence = (evdId) => {
+        try {
+            const vault = JSON.parse(localStorage.getItem('hedera_evidence_vault') || '{}');
+            const evidence = vault[evdId];
+            if (evidence) {
+                // Convert Base64 (data URI) to Blob
+                const base64Data = evidence.data.split(',')[1];
+                const contentType = evidence.type;
+                
+                const byteCharacters = atob(base64Data);
+                const byteNumbers = new Array(byteCharacters.length);
+                for (let i = 0; i < byteCharacters.length; i++) {
+                    byteNumbers[i] = byteCharacters.charCodeAt(i);
+                }
+                const byteArray = new Uint8Array(byteNumbers);
+                const blob = new Blob([byteArray], { type: contentType });
+                const url = URL.createObjectURL(blob);
+                
+                const win = window.open(url, '_blank');
+                if (!win) toast.error("Pop-up blocked. Please allow pop-ups for this site.");
+            } else {
+                toast.error("Evidence not found in local vault. (ID: " + evdId + ")");
+            }
+        } catch (err) {
+            console.error("Evidence retrieval failed", err);
+            toast.error("Failed to load local evidence.");
         }
     };
 
@@ -475,20 +563,57 @@ const InsuranceDashboard = ({ account, consentContract, auditLogContract, access
                                         <th style={{ color: 'var(--text-main)', fontWeight: '700' }}>Purpose & Metadata</th>
                                         <th style={{ color: 'var(--text-main)', fontWeight: '700' }}>Log Date</th>
                                         <th style={{ color: 'var(--text-main)', fontWeight: '700' }}>Hedera Status</th>
+                                        <th style={{ color: 'var(--text-main)', fontWeight: '700' }}>Action</th>
                                     </tr>
                                 </thead>
                                 <tbody>
                                     {allRequests.length === 0 ? (
-                                        <tr><td colSpan="4" style={{ textAlign: 'center', padding: '3rem', color: 'var(--text-muted)' }}>No requests sent yet. Use the 'Request' tab to begin.</td></tr>
+                                        <tr><td colSpan="5" style={{ textAlign: 'center', padding: '3rem', color: 'var(--text-muted)' }}>No requests sent yet. Use the 'Request' tab to begin.</td></tr>
                                     ) : (
-                                        allRequests.map(r => (
-                                            <tr key={r.id}>
-                                                <td style={{ fontFamily: 'monospace', fontSize: '0.85rem' }}>{r.patient.slice(0, 16)}...</td>
-                                                <td style={{ fontSize: '0.9rem' }}>{r.purpose}</td>
-                                                <td style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>{r.time}</td>
-                                                <td><span className="status-badge success">{r.status}</span></td>
-                                            </tr>
-                                        ))
+                                        allRequests.map(r => {
+                                            const hasEvidence = r.purpose.includes('| Evidence:');
+                                            const evidenceCIDs = hasEvidence ? r.purpose.split('| Evidence: ')[1].split(', ') : [];
+                                            const isVerified = verifiedClaimIds.includes(r.id.toString());
+
+                                            return (
+                                                <tr key={r.id}>
+                                                    <td style={{ fontFamily: 'monospace', fontSize: '0.85rem' }}>{r.patient.slice(0, 16)}...</td>
+                                                    <td style={{ fontSize: '0.9rem' }}>
+                                                         <div style={{ fontWeight: '600', color: 'var(--medical-primary)' }}>
+                                                             {r.purpose.split(' | ')[0]}
+                                                         </div>
+                                                         {r.amount && (
+                                                             <div style={{ fontSize: '0.85rem', color: 'var(--status-approved)', fontWeight: 'bold', marginTop: '4px' }}>
+                                                                 💰 Requested: ₹{r.amount}
+                                                             </div>
+                                                         )}
+                                                         {hasEvidence && (
+                                                             <div style={{ marginTop: '0.5rem', display: 'flex', gap: '0.3rem', flexWrap: 'wrap' }}>
+                                                                 {evidenceCIDs.map((cid, ci) => (
+                                                                     <button key={ci} onClick={() => handleViewEvidence(cid.trim())} className="status-badge" style={{ fontSize: '0.65rem', background: 'var(--grad-teal)', color: 'white', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                                                         📄 View PDF {ci+1}
+                                                                     </button>
+                                                                 ))}
+                                                             </div>
+                                                         )}
+                                                     </td>
+                                                     <td style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>{r.time}</td>
+                                                     <td><span className="status-badge success">{r.status}</span></td>
+                                                    <td>
+                                                        {hasEvidence && !isVerified && (
+                                                            <button 
+                                                                className="primary-btn" 
+                                                                style={{ padding: '0.3rem 0.6rem', fontSize: '0.7rem' }}
+                                                                onClick={() => handleVerifyClaim(r.id.toString())}
+                                                            >
+                                                                Verify Documents
+                                                            </button>
+                                                        )}
+                                                        {isVerified && <span className="status-badge active" style={{ fontSize: '0.7rem' }}>Verified</span>}
+                                                    </td>
+                                                </tr>
+                                            );
+                                        })
                                     )}
                                 </tbody>
                             </table>
@@ -515,13 +640,49 @@ const InsuranceDashboard = ({ account, consentContract, auditLogContract, access
                                                 <div>
                                                     <h4 style={{ margin: 0 }}>IPFS Record: {r.cid.slice(0, 8)}...</h4>
                                                     <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>Patient: {r.patient.slice(0, 12)}...</span>
-                                                </div>
-                                                <span className="status-badge active">Approved</span>
-                                            </div>
+                                                 </div>
+                                                 {(() => {
+                                                     const claim = claims.find(c => c.cid === r.cid);
+                                                     const status = claim ? claim.status : (r.purpose.toLowerCase().includes('claim filing') ? 'Waiting for Disburse' : 'Consent Approved');
+                                                     const isFinal = status === 'Approved';
+                                                     return (
+                                                         <span className={`status-badge ${isFinal ? 'active' : 'pending'}`}>
+                                                             {status}
+                                                         </span>
+                                                     );
+                                                 })()}
+                                             </div>
                                             <div style={{ fontSize: '0.9rem', color: 'var(--text-main)', background: '#F8FAFC', padding: '10px', borderRadius: '8px', marginBottom: '1rem' }}>
                                                 <strong>Approved Purpose:</strong><br />
-                                                <span style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>{r.purpose}</span>
+                                                <span style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>
+                                                    {r.purpose.split(' | Evidence:')[0]}
+                                                </span>
                                             </div>
+
+                                            {r.purpose.includes(' | Evidence: ') && (
+                                                <div style={{ marginBottom: '1rem' }}>
+                                                    <strong style={{ fontSize: '0.8rem', color: 'var(--medical-aqua)' }}>Hospital Submitted Evidence:</strong>
+                                                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem', marginTop: '5px' }}>
+                                                        {r.purpose.split(' | Evidence: ')[1].split(', ').map((cid, cIdx) => (
+                                                            <button 
+                                                                key={cIdx}
+                                                                onClick={() => handleViewEvidence(cid.trim())}
+                                                                style={{ 
+                                                                    fontSize: '0.7rem', 
+                                                                    padding: '2px 8px', 
+                                                                    borderRadius: '4px', 
+                                                                    border: '1px solid var(--medical-aqua)',
+                                                                    background: 'white',
+                                                                    color: 'var(--medical-aqua)',
+                                                                    cursor: 'pointer'
+                                                                }}
+                                                            >
+                                                                📄 Doc {cIdx + 1}
+                                                            </button>
+                                                        ))}
+                                                    </div>
+                                                </div>
+                                            )}
                                             
                                             {r.billAmount && Number(r.billAmount) > 0 && (
                                                 <div style={{ padding: '0.8rem', background: 'var(--grad-teal)', borderRadius: '12px', color: 'white', marginBottom: '1rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -539,18 +700,34 @@ const InsuranceDashboard = ({ account, consentContract, auditLogContract, access
                                                     onClick={async () => {
                                                         try {
                                                             setLoading(true);
+                                                            
+                                                            // STEP 1: LOG ACCESS ON-CHAIN (Transaction First)
+                                                            if (auditLogContract) {
+                                                                toast.info("Signing compliance log on Hedera...");
+                                                                const nowSecs = Math.floor(Date.now() / 1000);
+                                                                const tx = await auditLogContract.logDataAccessed(
+                                                                    r.patient, 
+                                                                    account, 
+                                                                    `Insurance Review of CID ${r.cid.slice(0, 8)}`, 
+                                                                    nowSecs, 
+                                                                    { gasLimit: 1000000 }
+                                                                );
+                                                                await tx.wait();
+                                                                toast.success("Access Logged on Ledger");
+                                                            } else {
+                                                                toast.error("Audit contract not available. Access denied.");
+                                                                return;
+                                                            }
+
+                                                            // STEP 2: FETCH & DECRYPT (Only after success)
+                                                            toast.info("Retrieving & Decrypting Patient Data...");
                                                             const cipherText = await fetchFromPinata(r.cid);
                                                             const raw = decryptData(cipherText);
                                                             setDecryptedRecord({ ...raw, cid: r.cid, patient: r.patient });
-
-                                                            // LOG ACCESS ON-CHAIN
-                                                            if (auditLogContract) {
-                                                                const nowSecs = Math.floor(Date.now() / 1000);
-                                                                await auditLogContract.logDataAccessed(r.patient, account, `Insurance Review of CID ${r.cid.slice(0, 8)}`, nowSecs, { gasLimit: 1000000 });
-                                                            }
-                                                            toast.success("Record Decrypted & Access Logged");
+                                                            toast.success("Record Decrypted");
                                                         } catch (e) {
-                                                            toast.error("Decryption failed. Data might be corrupted or key mismatch.");
+                                                            console.error("Access error:", e);
+                                                            toast.error("Access failed: Transaction rejected or decryption error.");
                                                         } finally { setLoading(false); }
                                                     }}
                                                 >
@@ -612,6 +789,7 @@ const InsuranceDashboard = ({ account, consentContract, auditLogContract, access
                                         <th style={{ color: 'var(--text-main)', fontWeight: '700' }}>Evidence CID</th>
                                         <th style={{ color: 'var(--text-main)', fontWeight: '700' }}>Status</th>
                                         <th style={{ color: 'var(--text-main)', fontWeight: '700' }}>Amount</th>
+                                        <th style={{ color: 'var(--text-main)', fontWeight: '700' }}>Action</th>
                                     </tr>
                                 </thead>
                                 <tbody>
@@ -623,24 +801,41 @@ const InsuranceDashboard = ({ account, consentContract, auditLogContract, access
                                                 <td>#{c.id}</td>
                                                 <td style={{ fontFamily: 'monospace' }}>{c.patient.slice(0, 16)}...</td>
                                                 <td style={{ fontFamily: 'monospace', fontSize: '0.8rem' }}>{c.cid.slice(0, 16)}...</td>
-                                                <td>
-                                                    <span className={`status-badge ${c.status === 'Disbursed' ? 'success' : 'pending'}`}>
-                                                        {c.status}
-                                                    </span>
-                                                </td>
-                                                <td style={{ fontWeight: 'bold' }}>₹ {c.amount}</td>
-                                                <td>
-                                                    {c.status !== 'Disbursed' && (
-                                                        <button 
-                                                            className="primary-btn" 
-                                                            style={{ padding: '0.3rem 0.6rem', fontSize: '0.7rem', background: 'var(--grad-teal)' }}
-                                                            onClick={() => handleDisburseClaim(c)}
-                                                            disabled={loading}
-                                                        >
-                                                            {loading ? "..." : "Disburse Funds"}
-                                                        </button>
-                                                    )}
-                                                </td>
+                                                 <td>
+                                                     <span className={`status-badge ${c.status === 'Approved' ? 'success' : 'pending'}`}>
+                                                         {c.status}
+                                                     </span>
+                                                     {verifiedClaimIds.includes(c.id) || c.verified ? (
+                                                         <div style={{ fontSize: '0.65rem', color: 'var(--status-approved)', marginTop: '2px', fontWeight: 'bold' }}>✓ Documents Verified</div>
+                                                     ) : (
+                                                         <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)', marginTop: '2px' }}>⚠ Verification Pending</div>
+                                                     )}
+                                                 </td>
+                                                 <td style={{ fontWeight: 'bold' }}>₹ {c.amount}</td>
+                                                 <td>
+                                                     {c.status !== 'Approved' && (
+                                                         <>
+                                                             {!(verifiedClaimIds.includes(c.id) || c.verified) ? (
+                                                                 <button 
+                                                                     className="secondary-btn" 
+                                                                     style={{ padding: '0.3rem 0.6rem', fontSize: '0.7rem', borderColor: 'var(--medical-primary)' }}
+                                                                     onClick={() => handleVerifyClaim(c.id)}
+                                                                 >
+                                                                     Verify Docs
+                                                                 </button>
+                                                             ) : (
+                                                                 <button 
+                                                                     className="primary-btn" 
+                                                                     style={{ padding: '0.3rem 0.6rem', fontSize: '0.7rem', background: 'var(--grad-teal)' }}
+                                                                     onClick={() => handleDisburseClaim(c)}
+                                                                     disabled={loading}
+                                                                 >
+                                                                     {loading ? "..." : "Disburse Funds"}
+                                                                 </button>
+                                                             )}
+                                                         </>
+                                                     )}
+                                                 </td>
                                             </tr>
                                         ))
                                     )}

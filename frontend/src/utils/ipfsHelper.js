@@ -33,6 +33,44 @@ export const decryptData = (encryptedText, secretKey = DEMO_SECRET_KEY) => {
 };
 
 /**
+ * Uploads Raw File to IPFS via Pinata
+ * @param {File} file - the browser file object
+ * @param {string} name - identifier for the pin
+ * @returns {Promise<string>} - Returns the IPFS CID Hash
+ */
+export const uploadFileToPinata = async (file, name = "Medical Evidence") => {
+    try {
+        const formData = new FormData();
+        formData.append('file', file);
+        
+        const metadata = JSON.stringify({
+            name: name,
+        });
+        formData.append('pinataMetadata', metadata);
+
+        const options = JSON.stringify({
+            cidVersion: 1,
+        });
+        formData.append('pinataOptions', options);
+
+        const res = await axios.post(
+            "https://api.pinata.cloud/pinning/pinFileToIPFS",
+            formData,
+            {
+                headers: {
+                    'Content-Type': `multipart/form-data; boundary=${formData._boundary}`,
+                    Authorization: `Bearer ${PINATA_JWT}`
+                }
+            }
+        );
+        return res.data.IpfsHash;
+    } catch (error) {
+        console.error("Error uploading file to Pinata:", error);
+        throw new Error("Failed to upload file to IPFS network");
+    }
+};
+
+/**
  * Uploads Encrypted String to IPFS via Pinata
  * @param {string} encryptedPayload - the ciphertext
  * @param {string} name - identifier for the pin

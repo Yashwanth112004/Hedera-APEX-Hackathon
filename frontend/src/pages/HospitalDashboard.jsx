@@ -37,6 +37,7 @@ const HospitalDashboard = ({
   const [showInsuranceModal, setShowInsuranceModal] = useState(false);
   const [requestData, setRequestData] = useState({ patientWallet: '', purpose: '', scope: 'All' });
   const [viewDataSettings, setViewDataSettings] = useState({ scope: 'All', purpose: 'Clinical Review' });
+  const [claimFiles, setClaimFiles] = useState([]);
 
   const [interactionHistory, setInteractionHistory] = useState([]);
   const [accessLogs, setAccessLogs] = useState([]);
@@ -644,10 +645,19 @@ const HospitalDashboard = ({
             </div>
             <form onSubmit={async (e) => {
               e.preventDefault();
+
+              const fileToBase64 = (file) => new Promise((resolve, reject) => {
+                const reader = new FileReader();
+                reader.readAsDataURL(file);
+                reader.onload = () => resolve(reader.result);
+                reader.onerror = error => reject(error);
+              });
+
               const insProvider = e.target.insuranceWallet.value;
               const patient = e.target.patientWallet.value;
               const surgeryType = e.target.surgeryType.value;
-              const purpose = "Surgery Claim Review - " + (surgeryType || "General");
+              const amount = e.target.claimAmount.value;
+              const purpose = `Surgery Claim Review - ${surgeryType || "General"}${amount ? ` | Amount: ${amount}` : ""}`;
 
               if (!insProvider || !patient) {
                 toast.error("Insurance Provider and Patient information required");
@@ -656,7 +666,30 @@ const HospitalDashboard = ({
 
               try {
                 setLoading(true);
+                
+                let evidenceString = "";
+                if (claimFiles.length > 0) {
+                  toast.info(`Encoding ${claimFiles.length} files to Local Vault...`);
+                  const evdIds = [];
+                  const vault = JSON.parse(localStorage.getItem('hedera_evidence_vault') || '{}');
+                  
+                  for (const file of claimFiles) {
+                    const base64 = await fileToBase64(file);
+                    const evdId = `EVD-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
+                    vault[evdId] = {
+                      name: file.name,
+                      type: file.type,
+                      data: base64
+                    };
+                    evdIds.push(evdId);
+                  }
+                  
+                  localStorage.setItem('hedera_evidence_vault', JSON.stringify(vault));
+                  evidenceString = " | Evidence: " + evdIds.join(", ");
+                }
+
                 toast.info("Sending Claim Initialization notice to Insurance...");
+                const finalPurpose = purpose + evidenceString;
 
                 const provider = new ethers.BrowserProvider(window.ethereum);
                 const signer = await provider.getSigner();
@@ -669,7 +702,7 @@ const HospitalDashboard = ({
                 const tx = await auditWithSigner.logAccessRequested(
                   patientWallet,
                   insuranceWallet,
-                  purpose,
+                  finalPurpose,
                   Math.floor(Date.now() / 1000),
                   { gasLimit: 1000000 }
                 );
@@ -677,6 +710,7 @@ const HospitalDashboard = ({
 
                 toast.success("Insurance notified via Ledger Event!");
                 setShowInsuranceModal(false);
+                setClaimFiles([]);
               } catch (err) {
                 toast.error("Failed to notify insurance: " + err.message);
               } finally {
@@ -692,8 +726,27 @@ const HospitalDashboard = ({
                 <input name="patientWallet" className="glass-input" placeholder="0x... or PAT456" required />
               </div>
               <div className="form-group">
-                <label>Claim Category / Surgery Type</label>
-                <input name="surgeryType" className="glass-input" placeholder="e.g. Cardiac Bypass" />
+                <label>Claim Category / Surgery Type *</label>
+                <input name="surgeryType" className="glass-input" placeholder="e.g. Cardiac Bypass" required />
+              </div>
+              <div className="form-group">
+                <label>Total Claim Amount (INR) *</label>
+                <input name="claimAmount" type="number" className="glass-input" placeholder="e.g. 150000" required />
+              </div>
+              <div className="form-group">
+                <label>Related Evidence Files (Bills, Reports)</label>
+                <input 
+                  type="file" 
+                  multiple 
+                  className="glass-input" 
+                  onChange={(e) => setClaimFiles(Array.from(e.target.files))}
+                  style={{ paddingTop: '10px' }}
+                />
+                {claimFiles.length > 0 && (
+                  <p style={{ fontSize: '0.8rem', color: 'var(--medical-aqua)', marginTop: '5px' }}>
+                    {claimFiles.length} files selected
+                  </p>
+                )}
               </div>
               <div className="modal-actions">
                 <button type="submit" className="primary-btn" disabled={loading}>Log Claim Request</button>
