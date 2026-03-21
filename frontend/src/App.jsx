@@ -204,7 +204,7 @@ function App() {
     const provider = new ethers.BrowserProvider(window.ethereum);
     setAccount(wallet);
     localStorage.setItem('hedera_hc_account', wallet);
-    
+
     // Principal contracts for WRITING (connected to signer)
     setConsent(new ethers.Contract(CONSENT_MANAGER, consentABI, signer));
     setRegistry(new ethers.Contract(REGISTRY, registryABI, signer));
@@ -213,7 +213,7 @@ function App() {
     setMedicalRecords(new ethers.Contract(MEDICAL_RECORDS, medicalRecordsABI, signer));
     setWalletMapper(new ethers.Contract(WALLET_MAPPER_ADDRESS, WALLET_MAPPER_ABI, signer));
     setRBAC(new ethers.Contract(RBAC_CONTRACT_ADDRESS, roleABI, signer));
-    
+
     // For specialized read operations via direct RPC
     const hapiProvider = new ethers.JsonRpcProvider("https://testnet.hashio.io/api");
     window.hapiProvider = hapiProvider; // Global for debug visibility
@@ -228,12 +228,12 @@ function App() {
     const autoReconnect = async () => {
       const savedAccount = localStorage.getItem('hedera_hc_account');
       const savedRole = localStorage.getItem('hedera_hc_role');
-      
+
       if (window.ethereum && savedAccount) {
         try {
           const provider = new ethers.BrowserProvider(window.ethereum);
           const accounts = await provider.send("eth_accounts", []);
-          
+
           if (accounts.length > 0 && accounts[0].toLowerCase() === savedAccount.toLowerCase()) {
             const signer = await provider.getSigner();
             await initializeSession(signer, accounts[0], savedRole);
@@ -300,7 +300,7 @@ function App() {
       localStorage.setItem('hedera_hc_account', safeWallet);
       localStorage.setItem('hedera_hc_role', 'admin');
       localStorage.setItem('hedera_hc_authenticated', 'true');
-      
+
       setAuthenticated(true);
       const signer = await provider.getSigner();
       await initializeSession(signer, safeWallet, "admin");
@@ -319,7 +319,7 @@ function App() {
     setShowContextSelection(false);
     setActingAsAccount("");
     setActiveTab("dashboard");
-    
+
     localStorage.removeItem('hedera_hc_account');
     localStorage.removeItem('hedera_hc_role');
     localStorage.removeItem('hedera_hc_authenticated');
@@ -409,14 +409,14 @@ function App() {
       setShowBeneficiaryLogin(false);
       localStorage.setItem('hedera_hc_role', 'patient');
       toast.success(`Access granted for account: ${resolvedMainAccount}`);
-      
+
       // NOTIFICATION: Check if this beneficiary was newly added
       try {
         const notifyKey = `beneficiary_notifications_${beneficiaryWallet.toLowerCase()}`;
         const storedNotif = JSON.parse(localStorage.getItem(notifyKey) || "[]");
         if (storedNotif.length > 0) {
           storedNotif.forEach(n => {
-            toast.info(`📢 NEW: You were added as a beneficiary by patient ${n.patient.slice(0,10)}...`, { autoClose: false });
+            toast.info(`📢 NEW: You were added as a beneficiary by patient ${n.patient.slice(0, 10)}...`, { autoClose: false });
           });
           localStorage.removeItem(notifyKey); // Clear after showing
         }
@@ -452,11 +452,11 @@ function App() {
       const actualDataScope = (scope && scope.startsWith('Qm')) ? "Clinical Record" : (scope || "All");
 
       const tx = await consentContract.grantConsent(
-        hospitalAddress, 
-        purpose, 
-        actualDataHash, 
-        actualDataScope, 
-        duration || 86400, 
+        hospitalAddress,
+        purpose,
+        actualDataHash,
+        actualDataScope,
+        duration || 86400,
         { gasLimit: 1000000 }
       );
       await tx.wait();
@@ -467,9 +467,9 @@ function App() {
       // Enhanced error reporting for contract reverts
       let errorMsg = err.reason || err.message;
       if (err.data && err.data.includes("0x08c379a0")) { // Error(string) selector
-          if (err.data.includes("466964756369617279206e6f7420617070726f766564")) { // "Fiduciary not approved"
-               errorMsg = "Fiduciary not approved in Registry. Ensure the entity is registered and approved.";
-          }
+        if (err.data.includes("466964756369617279206e6f7420617070726f766564")) { // "Fiduciary not approved"
+          errorMsg = "Fiduciary not approved in Registry. Ensure the entity is registered and approved.";
+        }
       }
       toast.error("Grant failed: " + errorMsg);
     }
@@ -636,10 +636,10 @@ function App() {
 
     const onAccessed = (principal, fiduciary, purpose, timestamp) => {
       const isEmergency = purpose.includes('EMERGENCY_ACCESS') || purpose.includes('Break-Glass');
-      const msg = isEmergency 
+      const msg = isEmergency
         ? `🚨 URGENT: Emergency glass-break access initiated for your wallet by ${fiduciary.slice(0, 10)}...! Reason: ${purpose}`
         : `🚨 DPDP ALERT: Data accessed by ${fiduciary.slice(0, 10)}... for ${purpose}`;
-      
+
       if (isEmergency) {
         toast.error(msg, { autoClose: false, closeOnClick: false, draggable: false });
       } else {
@@ -664,16 +664,16 @@ function App() {
   }, [auditLogContract, account]);
 
   const renderDashboard = () => {
-    const commonProps = { 
-        account, 
-        consentContract, 
-        registryContract, 
-        auditLogContract, 
-        accessContract, 
-        medicalRecordsContract, 
-        walletMapperContract, 
-        rbacContract,
-        hapiProvider: window.hapiProvider // Explicit read-only RPC provider
+    const commonProps = {
+      account,
+      consentContract,
+      registryContract,
+      auditLogContract,
+      accessContract,
+      medicalRecordsContract,
+      walletMapperContract,
+      rbacContract,
+      hapiProvider: window.hapiProvider // Explicit read-only RPC provider
     };
     const r = role?.toLowerCase();
 
@@ -754,7 +754,6 @@ function App() {
                   <h3 style={{ fontSize: '1.6rem', color: '#1E40AF' }}>Notice & Consent</h3>
                 </div>
                 <p style={{ color: '#64748B', lineHeight: '1.8', fontSize: '1.05rem' }}>Itemized consent management under Section 5 & 6. Our ledger ensures clinical providers cannot access your records without your explicit digital authorization.</p>
-                <span style={{ color: '#1E40AF', fontWeight: '700', fontSize: '0.8rem' }}>LEARN MORE →</span>
               </div>
 
               <div className="feature-card" style={{ borderLeft: '6px solid #DC2626' }}>
@@ -763,7 +762,7 @@ function App() {
                   <h3 style={{ fontSize: '1.6rem', color: '#DC2626' }}>Right to Erasure</h3>
                 </div>
                 <p style={{ color: '#64748B', lineHeight: '1.8', fontSize: '1.05rem' }}>Full Section 12 compliance. Exercise your right to be forgotten. Trigger 1-click ledger-anchored requests to purge your clinical footprint across the network.</p>
-                <span style={{ color: '#DC2626', fontWeight: '700', fontSize: '0.8rem' }}>EXERCISE RIGHT →</span>
+
               </div>
 
               <div className="feature-card" style={{ borderLeft: '6px solid #059669' }}>
@@ -772,7 +771,7 @@ function App() {
                   <h3 style={{ fontSize: '1.6rem', color: '#059669' }}>Audit Hierarchy</h3>
                 </div>
                 <p style={{ color: '#64748B', lineHeight: '1.8', fontSize: '1.05rem' }}>Real-time transparency for data interactions. Fiduciaries are held accountable through an irreversible Hedera blockchain audit trail of all access events.</p>
-                <span style={{ color: '#059669', fontWeight: '700', fontSize: '0.8rem' }}>VIEW TRAIL →</span>
+
               </div>
             </div>
           </div>
@@ -790,10 +789,10 @@ function App() {
                 <button
                   key={r}
                   className="glass-panel floating-card"
-                  onClick={() => { 
-                    setRole(r.toLowerCase()); 
+                  onClick={() => {
+                    setRole(r.toLowerCase());
                     localStorage.setItem('hedera_hc_role', r.toLowerCase());
-                    setShowContextSelection(false); 
+                    setShowContextSelection(false);
                   }}
                   style={{
                     padding: '3rem 1.5rem',
