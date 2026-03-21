@@ -15,57 +15,31 @@ const Navbar = ({ account, onDisconnect, role, onConnect, onRegister, onAdmin, o
       left: '0',
       width: '100%',
       zIndex: 1000,
-      background: 'rgba(255, 255, 255, 0.95)',
-      backdropFilter: 'blur(10px)',
-      borderBottom: '1px solid var(--border-light)',
-      boxShadow: '0 4px 12px rgba(0, 0, 0, 0.03)',
+      background: 'linear-gradient(90deg, #E6EEE8 0%, #E6EEE8 15%, rgba(49, 80, 70, 0.95) 35%, rgba(49, 80, 70, 0.95) 100%)', 
+      backdropFilter: 'blur(12px)',
+      borderBottom: '2px solid rgba(168, 194, 86, 0.4)', // Stronger organic green border to separate from page bg
+      boxShadow: '0 8px 30px rgba(0, 0, 0, 0.08)',
       transition: 'all 0.3s ease'
     }}>
       <div className="navbar-container" style={{ 
         padding: '0 2rem', 
-        height: '80px', 
+        height: '92px', 
         display: 'flex', 
         alignItems: 'center', 
         justifyContent: 'space-between' 
       }}>
         {/* Brand Section */}
-        <div className="navbar-brand" style={{ display: 'flex', alignItems: 'center', gap: '1.2rem' }}>
-          <div style={{ 
-            background: 'var(--grad-teal)', 
-            padding: '12px', 
-            borderRadius: '14px', 
-            display: 'flex', 
-            alignItems: 'center', 
-            justifyContent: 'center',
-            boxShadow: '0 8px 16px rgba(20, 184, 166, 0.2)',
-          }}>
-            <Hospital size={26} color="white" />
-          </div>
-          <div>
-            <h2 style={{ 
-              fontSize: '1.5rem', 
-              margin: 0, 
-              color: 'var(--medical-primary)',
-              fontWeight: '800', 
-              letterSpacing: '-0.03em',
-              lineHeight: 1
-            }}>
-              Hedera<span style={{ color: 'var(--medical-secondary)' }}>Consent</span>
-            </h2>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '4px' }}>
-              <div className="status-indicator">
-                <span className="dot" style={{ backgroundColor: 'var(--medical-primary)', boxShadow: '0 0 8px var(--medical-primary)' }}></span>
-              </div>
-              <span style={{ 
-                fontSize: '0.75rem', 
-                fontWeight: '600',
-                color: 'var(--text-muted)',
-                letterSpacing: '0.02em'
-              }}>
-                Web3 Data Governance
-              </span>
-            </div>
-          </div>
+        <div className="navbar-brand" style={{ display: 'flex', alignItems: 'center' }}>
+          <img 
+            src="/logo.jpg" 
+            alt="Ojasraksha Logo" 
+            style={{ 
+              height: '76px', 
+              objectFit: 'contain',
+              filter: 'contrast(1.02) brightness(1.02)',
+              marginRight: '1rem'
+            }} 
+          />
         </div>
 
         {/* Actions Section */}
@@ -81,13 +55,28 @@ const Navbar = ({ account, onDisconnect, role, onConnect, onRegister, onAdmin, o
                 gap: '12px',
               }}>
                 <div style={{ textAlign: 'right' }}>
-                  <p style={{ fontSize: '0.85rem', fontWeight: 'bold', margin: 0, color: 'var(--text-muted)' }}>
+                  <p style={{ 
+                    fontSize: '0.9rem', 
+                    fontWeight: '800', 
+                    margin: 0, 
+                    color: '#FFFFFF',
+                    textShadow: '0 1px 4px rgba(0,0,0,0.2)'
+                  }}>
                     {account.slice(0, 6)}...{account.slice(-4)}
                   </p>
                   {role && (
-                    <span className="role-badge" style={{ fontSize: '0.65rem', background: 'var(--grad-teal)', cursor: 'pointer' }} onClick={onSwitchRole} title="Click to switch role">
-                      {role} 🔄
-                    </span>
+                      <span className="role-badge" style={{ 
+                        fontSize: '0.7rem', 
+                        padding: '4px 10px',
+                        background: 'var(--medical-highlight)', 
+                        color: 'var(--medical-primary)', 
+                        fontWeight: '800',
+                        borderRadius: '8px',
+                        cursor: 'pointer',
+                        boxShadow: '0 2px 8px rgba(0,0,0,0.1)'
+                      }} onClick={onSwitchRole} title="Click to switch role">
+                        {role.toUpperCase()} 🔄
+                      </span>
                   )}
                 </div>
               </div>
@@ -96,7 +85,13 @@ const Navbar = ({ account, onDisconnect, role, onConnect, onRegister, onAdmin, o
                 <button 
                   className="secondary-btn" 
                   onClick={onSwitchRole}
-                  style={{ padding: '8px 12px', fontSize: '0.8rem' }}
+                  style={{ 
+                    padding: '8px 12px', 
+                    fontSize: '0.8rem', 
+                    color: '#F0F4F2', 
+                    borderColor: 'rgba(240, 244, 242, 0.4)', 
+                    background: 'transparent' 
+                  }}
                 >
                   Switch Role
                 </button>
@@ -105,7 +100,7 @@ const Navbar = ({ account, onDisconnect, role, onConnect, onRegister, onAdmin, o
               <button 
                 className="secondary-btn" 
                 onClick={handleDisconnect}
-                style={{ borderColor: '#FECACA', color: '#B91C1C' }}
+                style={{ borderColor: '#FFB2B2', color: '#FFB2B2', background: 'transparent' }}
               >
                 Disconnect
               </button>
@@ -115,13 +110,25 @@ const Navbar = ({ account, onDisconnect, role, onConnect, onRegister, onAdmin, o
               <button 
                 className="secondary-btn" 
                 onClick={onAdmin}
+                style={{ 
+                  color: '#F0F4F2', 
+                  borderColor: 'rgba(240, 244, 242, 0.4)', 
+                  background: 'transparent',
+                  backdropFilter: 'blur(4px)'
+                }}
               >
                 Admin
               </button>
               <button 
                 className="primary-btn" 
                 onClick={onConnect}
-                style={{ borderRadius: '50px' }}
+                style={{ 
+                  borderRadius: '50px', 
+                  background: 'var(--medical-highlight)', 
+                  color: 'var(--medical-primary)',
+                  boxShadow: '0 8px 20px rgba(168, 194, 86, 0.3)',
+                  border: 'none'
+                }}
               >
                 Connect Wallet
               </button>

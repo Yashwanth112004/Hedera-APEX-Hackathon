@@ -1,9 +1,15 @@
 {
-  "short_name": "DPDP Consent",
-  "name": "DPDP Healthcare Consent Network",
-  "icons": [],
+  "short_name": "Ojasraksha",
+  "name": "Ojasraksha Health Data Network",
+  "icons": [
+    {
+      "src": "logo.jpg",
+      "sizes": "512x512",
+      "type": "image/jpeg"
+    }
+  ],
   "start_url": ".",
   "display": "standalone",
-  "theme_color": "#1E3A8A",
-  "background_color": "#ffffff"
+  "theme_color": "#315046",
+  "background_color": "#F0F4F2"
 }

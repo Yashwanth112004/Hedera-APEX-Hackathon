@@ -9,6 +9,14 @@ import { getSafePatientConsents } from "./utils/consentHelper";
 import Navbar from "./components/Navbar";
 import Sidebar from "./components/Sidebar";
 import MedicalBackground from "./components/MedicalBackground";
+import { LayoutGrid, ArrowRight, Activity, Shield, Globe, Lock } from "lucide-react";
+
+import ShieldDiagram from "./components/ShieldDiagram";
+import TrustBar from "./components/TrustBar";
+import StandardTrust from "./components/StandardTrust";
+import EnhancedFeatures from "./components/EnhancedFeatures";
+import SecurityArchitecture from "./components/SecurityArchitecture";
+import FloatingPortals from "./components/FloatingPortals";
 
 import PatientDashboard from "./pages/PatientDashboard";
 import DoctorDashboard from "./pages/DoctorDashboard";
@@ -701,79 +709,365 @@ function App() {
             onConnect={connectWallet}
             onAdmin={connectAdmin}
           />
-          <div className="landing-page animate-fade-in" style={{ padding: '80px 0 0 0', maxWidth: '100%', margin: '0', position: 'relative', overflow: 'hidden' }}>
+          <div className="landing-page animate-fade-in" style={{ padding: '80px 0 0 0', maxWidth: '100%', margin: '0', position: 'relative', overflow: 'hidden', background: '#F0F4F2' }}>
             <MedicalBackground />
+            <FloatingPortals />
 
-            {/* Professional Hero Section */}
+            {/* Professional SaaS Hero Section (Stripe/Vercel style) */}
             <div className="hero-section" style={{
-              background: 'radial-gradient(circle at top, #fff 0%, #f8faff 100%)',
-              borderBottom: '1px solid var(--border-light)',
-              padding: '8rem 2rem',
+              padding: '8rem 2rem 4rem 2rem',
+              display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
               textAlign: 'center',
-              position: 'relative'
+              position: 'relative',
+              zIndex: 2,
+              animation: 'countUp 0.8s ease-out forwards'
             }}>
-              <div className="glass-panel" style={{
-                maxWidth: '1200px',
-                margin: '0 auto',
-                padding: '4rem 2rem',
-                background: 'rgba(255, 255, 255, 0.4)',
-                border: '1px solid rgba(255, 255, 255, 0.8)'
-              }}>
-                <div className="status-badge" style={{ display: 'inline-flex', padding: '0.6rem 1.5rem', background: '#F0FDFA', color: '#0D9488', borderRadius: '30px', marginBottom: '2.5rem', fontSize: '0.85rem', fontWeight: '800', border: '1px solid #CCFBF1', letterSpacing: '0.1em' }}>
-                  ✚ 24/7 BLOCKCHAIN SECURED ACCESS
+              <div style={{ maxWidth: '960px', width: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+                
+                {/* SaaS Badge */}
+                <div style={{
+                  display: 'inline-flex', alignItems: 'center', gap: '8px',
+                  padding: '6px 16px',
+                  background: 'rgba(255,255,255,0.7)',
+                  backdropFilter: 'blur(10px)',
+                  border: '1px solid #E2E8F0',
+                  borderRadius: '100px',
+                  fontSize: '0.85rem',
+                  fontWeight: '600',
+                  color: '#475569',
+                  marginBottom: '2.5rem',
+                  boxShadow: '0 2px 10px rgba(0,0,0,0.03)',
+                  cursor: 'default',
+                  transition: 'transform 0.3s ease'
+                }}
+                  onMouseEnter={e => e.currentTarget.style.transform = 'translateY(-2px)'}
+                  onMouseLeave={e => e.currentTarget.style.transform = 'translateY(0)'}
+                >
+                  <span style={{ width: 8, height: 8, background: '#10B981', borderRadius: '50%', boxShadow: '0 0 8px rgba(16,185,129,0.5)' }}></span>
+                  Secure Consent Management <span style={{ color: '#94A3B8' }}>|</span> <span style={{ color: '#3A73E7' }}>v2.4 Released</span>
                 </div>
-                <h1 className="hero-title" style={{
-                  color: '#1E3A8A',
-                  fontSize: '5.2rem',
-                  marginBottom: '1.5rem',
+                
+                {/* Headline */}
+                <h1 style={{
+                  color: '#0F172A',
+                  fontSize: 'clamp(3.5rem, 6vw, 5.5rem)',
                   fontWeight: '900',
-                  lineHeight: '1.1',
-                  letterSpacing: '-0.04em'
+                  lineHeight: '1.05',
+                  letterSpacing: '-0.04em',
+                  marginBottom: '2rem',
+                  textShadow: '0 4px 24px rgba(0,0,0,0.03)'
                 }}>
-                  Patient-Centric <br /> <span style={{ color: '#14B8A6' }}>Data Governance</span>
+                  Take Control of Your <br />
+                  <span style={{
+                    background: 'linear-gradient(135deg, #A8C256 0%, #6A8F90 100%)',
+                    WebkitBackgroundClip: 'text',
+                    backgroundClip: 'text',
+                    WebkitTextFillColor: 'transparent',
+                    color: 'transparent',
+                    display: 'inline-block'
+                  }}>
+                    Medical Data
+                  </span>
                 </h1>
-                <p className="hero-subtitle" style={{ fontSize: '1.5rem', color: '#475569', maxWidth: '850px', margin: '0 auto', lineHeight: '1.6', fontWeight: '500' }}>
-                  Empowering the future of clinical data privacy. Securely manage your medical history with immutable blockchain consent, in total alignment with the <span style={{ color: '#1E3A8A', fontWeight: '700' }}>DPDP Act 2023.</span>
+
+                {/* Subtitle */}
+                <p style={{
+                  fontSize: '1.25rem',
+                  color: '#687D75',
+                  maxWidth: '640px',
+                  marginBottom: '3.5rem',
+                  lineHeight: '1.6',
+                  fontWeight: '400'
+                }}>
+                  Ojasraksha is a blockchain-powered consent platform that lets patients control who accesses their health records while enabling hospitals to stay compliant.
                 </p>
-                <div style={{ marginTop: '3.5rem', display: 'flex', gap: '2rem', justifyContent: 'center' }}>
-                  <button className="primary-btn" onClick={connectWallet} style={{ borderRadius: '50px', background: 'var(--medical-primary)' }}>
+
+                {/* CTA Buttons */}
+                <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap', justifyContent: 'center' }}>
+                  <button 
+                    onClick={connectWallet}
+                    style={{
+                      background: '#315046',
+                      color: 'white',
+                      border: 'none',
+                      padding: '0 2rem',
+                      height: '52px',
+                      borderRadius: '14px',
+                      fontSize: '1.1rem',
+                      fontWeight: '600',
+                      display: 'flex', alignItems: 'center', gap: '10px',
+                      cursor: 'pointer',
+                      transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
+                      boxShadow: '0 4px 12px rgba(49,80,70,0.15)'
+                    }}
+                    onMouseEnter={e => {
+                      e.currentTarget.style.transform = 'translateY(-3px)';
+                      e.currentTarget.style.boxShadow = '0 12px 24px -6px rgba(49,80,70,0.3)';
+                    }}
+                    onMouseLeave={e => {
+                      e.currentTarget.style.transform = 'translateY(0)';
+                      e.currentTarget.style.boxShadow = '0 4px 12px rgba(49,80,70,0.15)';
+                    }}
+                  >
                     Access Patient Portal
+                    <ArrowRight size={20} strokeWidth={2.5} />
                   </button>
-                  <button className="secondary-btn" onClick={() => setShowBeneficiaryLogin(true)} style={{ borderRadius: '50px', background: 'white' }}>
+
+                  <button 
+                    onClick={() => setShowBeneficiaryLogin(true)}
+                    style={{
+                      background: 'rgba(241,245,249,0.8)',
+                      backdropFilter: 'blur(10px)',
+                      color: '#0F172A',
+                      border: '1px solid #E2E8F0',
+                      padding: '0 2rem',
+                      height: '52px',
+                      borderRadius: '14px',
+                      fontSize: '1.1rem',
+                      fontWeight: '600',
+                      cursor: 'pointer',
+                      transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
+                      boxShadow: '0 2px 4px rgba(0,0,0,0.02)'
+                    }}
+                    onMouseEnter={e => {
+                      e.currentTarget.style.background = '#FFFFFF';
+                      e.currentTarget.style.transform = 'translateY(-3px)';
+                      e.currentTarget.style.boxShadow = '0 12px 24px -8px rgba(0,0,0,0.1)';
+                    }}
+                    onMouseLeave={e => {
+                      e.currentTarget.style.background = 'rgba(241,245,249,0.8)';
+                      e.currentTarget.style.transform = 'translateY(0)';
+                      e.currentTarget.style.boxShadow = '0 2px 4px rgba(0,0,0,0.02)';
+                    }}
+                  >
                     Beneficiary Access
                   </button>
                 </div>
               </div>
             </div>
 
-            {/* Features Area */}
-            <div className="dashboard-grid" style={{ maxWidth: '1400px', margin: '0 auto', padding: '4rem 2rem' }}>
-              <div className="feature-card" style={{ borderLeft: '6px solid #1E40AF' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
-                  <div style={{ background: '#EFF6FF', padding: '1rem', borderRadius: '12px' }}>🛡️</div>
-                  <h3 style={{ fontSize: '1.6rem', color: '#1E40AF' }}>Notice & Consent</h3>
+            <ShieldDiagram />
+            <TrustBar />
+            <StandardTrust />
+            <EnhancedFeatures />
+            <SecurityArchitecture />
+
+            {/* Ojasraksha Command Center Section */}
+            <div style={{ padding: '8rem 2rem', background: 'linear-gradient(180deg,#F0F4F2 0%,#F0F4F2 100%)', display: 'flex', flexDirection: 'column', alignItems: 'center', position: 'relative', overflow: 'hidden' }}>
+              {/* Decorative blobs */}
+              <div style={{ position: 'absolute', top: '-80px', left: '-80px', width: '400px', height: '400px', borderRadius: '50%', background: 'radial-gradient(circle,rgba(168,194,86,0.06) 0%,transparent 70%)', pointerEvents: 'none' }} />
+              <div style={{ position: 'absolute', bottom: '-60px', right: '-60px', width: '320px', height: '320px', borderRadius: '50%', background: 'radial-gradient(circle,rgba(106,143,144,0.06) 0%,transparent 70%)', pointerEvents: 'none' }} />
+
+              <div style={{ maxWidth: '980px', width: '100%', position: 'relative', zIndex: 2 }}>
+                {/* Section label */}
+                <p style={{ textAlign: 'center', fontWeight: '800', fontSize: '0.72rem', letterSpacing: '0.15em', color: '#6A8F90', textTransform: 'uppercase', marginBottom: '1rem' }}>
+                  LIVE PLATFORM PREVIEW
+                </p>
+                <h2 style={{
+                  textAlign: 'center', fontSize: '3rem', fontWeight: '900', color: '#315046',
+                  marginBottom: '1rem', lineHeight: 1.1, letterSpacing: '-0.03em'
+                }}>
+                  See <span style={{ background: 'linear-gradient(135deg,#A8C256,#6A8F90,#D4A373)', WebkitBackgroundClip: 'text', backgroundClip: 'text', WebkitTextFillColor: 'transparent', color: 'transparent', display: 'inline-block' }}>Ojasraksha</span> in Action
+                </h2>
+                <p style={{ textAlign: 'center', color: '#64748B', fontSize: '1.05rem', maxWidth: '520px', margin: '0 auto 3.5rem auto', lineHeight: 1.65 }}>
+                  Every consent, every access, every audit — captured on-chain in real time.
+                </p>
+
+                {/* Command Center Window */}
+                <div style={{
+                  background: 'rgba(255,255,255,0.92)',
+                  backdropFilter: 'blur(24px)',
+                  borderRadius: '24px',
+                  boxShadow: '0 8px 80px rgba(59,130,246,0.12), 0 2px 24px rgba(0,0,0,0.06), inset 0 1px 0 rgba(255,255,255,0.9)',
+                  overflow: 'hidden',
+                  border: '1px solid rgba(226,232,240,0.8)',
+                }}>
+                  {/* Title bar */}
+                  <div style={{
+                    background: 'linear-gradient(135deg,#315046 0%,#1F332C 100%)',
+                    padding: '16px 24px',
+                    display: 'flex', alignItems: 'center', gap: '8px',
+                  }}>
+                    <span style={{ width: 13, height: 13, borderRadius: '50%', background: '#FC5F5A', display: 'inline-block', boxShadow: '0 0 6px #FC5F5A80' }} />
+                    <span style={{ width: 13, height: 13, borderRadius: '50%', background: '#FDBC40', display: 'inline-block', boxShadow: '0 0 6px #FDBC4080' }} />
+                    <span style={{ width: 13, height: 13, borderRadius: '50%', background: '#34C64B', display: 'inline-block', boxShadow: '0 0 6px #34C64B80' }} />
+                    <span style={{ marginLeft: 16, fontWeight: '700', fontSize: '0.78rem', letterSpacing: '0.1em', color: 'rgba(255,255,255,0.85)', textTransform: 'uppercase' }}>OJASRAKSHA COMMAND CENTER</span>
+                    <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      <div style={{ width: 7, height: 7, borderRadius: '50%', background: '#10B981', animation: 'shieldPulse 2s ease-in-out infinite' }} />
+                      <span style={{ fontSize: '0.65rem', color: '#10B981', fontWeight: '700', letterSpacing: '0.08em' }}>LIVE</span>
+                    </div>
+                  </div>
+
+                  {/* Body */}
+                  <div style={{ display: 'flex', minHeight: '360px' }}>
+                    {/* Sidebar */}
+                    <div style={{ width: '200px', flexShrink: 0, borderRight: '1px solid #F1F5F9', padding: '1.75rem 1.25rem', display: 'flex', flexDirection: 'column', gap: '4px', background: '#FAFBFF' }}>
+                      {[
+                        { icon: '🔵', label: 'Overview', active: true },
+                        { icon: '❤️', label: 'Health Records', active: false },
+                        { icon: '📋', label: 'Consent History', active: false },
+                        { icon: '🔒', label: 'Security', active: false },
+                      ].map(item => (
+                        <div key={item.label} style={{
+                          display: 'flex', alignItems: 'center', gap: '10px',
+                          padding: '10px 14px', borderRadius: '10px',
+                          background: item.active ? 'linear-gradient(135deg,#EEF2FF,#E0E7FF)' : 'transparent',
+                          fontWeight: item.active ? '700' : '500',
+                          color: item.active ? '#3730A3' : '#94A3B8',
+                          fontSize: '0.85rem', cursor: 'default',
+                          borderLeft: item.active ? '2px solid #6366F1' : '2px solid transparent',
+                          transition: 'all 0.2s ease'
+                        }}>
+                          <span style={{ fontSize: '1rem' }}>{item.icon}</span>
+                          {item.label}
+                        </div>
+                      ))}
+                    </div>
+
+                    {/* Main panel */}
+                    <div style={{ flex: 1, padding: '2rem' }}>
+                      {/* Stat cards */}
+                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '1.25rem', marginBottom: '1.75rem' }}>
+                        {[
+                          { label: 'TOTAL CONSENTS', value: '6.2k', color: '#3B82F6', bar: '78%' },
+                          { label: 'ACTIVE REQUESTS', value: '142', color: '#6366F1', bar: '45%' },
+                          { label: 'SECURITY SCORE', value: '99.8%', color: '#10B981', bar: '99.8%' },
+                        ].map(s => (
+                          <div key={s.label} className="cmd-stat-card" style={{
+                            background: 'linear-gradient(145deg,#F6F8FA,#FFFFFF)',
+                            border: '1px solid #E8EDF5',
+                            borderRadius: '16px', padding: '1.5rem',
+                            position: 'relative', overflow: 'hidden'
+                          }}>
+                            {/* Top progress bar */}
+                            <div style={{ position: 'absolute', top: 0, left: 0, height: '3px', width: '100%', background: '#F1F5F9', borderRadius: '16px 16px 0 0' }}>
+                              <div style={{ height: '100%', width: s.bar, background: `linear-gradient(90deg,${s.color},${s.color}99)`, borderRadius: '16px 16px 0 0', transition: 'width 1.5s ease' }} />
+                            </div>
+                            <p style={{ fontSize: '0.65rem', fontWeight: '800', letterSpacing: '0.1em', color: '#94A3B8', marginBottom: '0.6rem', textTransform: 'uppercase' }}>{s.label}</p>
+                            <p style={{ fontSize: '2.2rem', fontWeight: '900', color: '#0F172A', margin: 0, letterSpacing: '-0.03em', lineHeight: 1 }}>{s.value}</p>
+                            <div style={{ marginTop: '0.5rem', fontSize: '0.72rem', color: s.color, fontWeight: '700' }}>↑ trending up</div>
+                          </div>
+                        ))}
+                      </div>
+
+                      {/* Audit stream */}
+                      <div style={{ background: 'linear-gradient(145deg,#F6F8FA,#F0F6FF)', border: '1px solid #E8EDF5', borderRadius: '16px', padding: '1.5rem' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1.25rem' }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                            <div style={{ width: 8, height: 8, borderRadius: '50%', background: '#10B981', animation: 'shieldPulse 2s ease-in-out infinite', flexShrink: 0 }} />
+                            <p style={{ fontWeight: '800', color: '#0F172A', fontSize: '0.95rem', margin: 0 }}>Live Audit Stream</p>
+                          </div>
+                          <span style={{ fontSize: '0.68rem', fontWeight: '700', color: '#3B82F6', background: '#EFF6FF', padding: '3px 10px', borderRadius: '100px', letterSpacing: '0.06em' }}>ON-CHAIN</span>
+                        </div>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                          {[
+                            { id: 'PAT-8921', action: 'Consent Granted', status: 'VERIFIED', ok: true, time: '2s ago' },
+                            { id: 'DOC-3321', action: 'Data Accessed',   status: 'VERIFIED', ok: true, time: '18s ago' },
+                            { id: 'PAT-1142', action: 'Key Revoked',     status: 'ALERT',    ok: false, time: '1m ago' },
+                          ].map(entry => (
+                            <div key={entry.id} className="audit-row" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 8px', borderBottom: '1px solid #E8EDF5', transition: 'all 0.2s ease' }}>
+                              <span style={{ fontSize: '0.82rem', color: '#475569', fontFamily: 'monospace', width: '90px', fontWeight: '600' }}>{entry.id}</span>
+                              <span style={{ fontSize: '0.85rem', color: '#475569', flex: 1, textAlign: 'center' }}>{entry.action}</span>
+                              <span style={{ fontSize: '0.65rem', color: '#94A3B8', marginRight: '14px' }}>{entry.time}</span>
+                              <span style={{
+                                fontSize: '0.65rem', fontWeight: '800', letterSpacing: '0.07em',
+                                padding: '4px 12px', borderRadius: '100px',
+                                background: entry.ok ? 'linear-gradient(135deg,#D1FAE5,#A7F3D0)' : 'linear-gradient(135deg,#FEE2E2,#FECACA)',
+                                color: entry.ok ? '#065F46' : '#991B1B',
+                                boxShadow: entry.ok ? '0 2px 6px rgba(16,185,129,0.2)' : '0 2px 6px rgba(239,68,68,0.2)'
+                              }}>{entry.status}</span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
                 </div>
-                <p style={{ color: '#64748B', lineHeight: '1.8', fontSize: '1.05rem' }}>Itemized consent management under Section 5 & 6. Our ledger ensures clinical providers cannot access your records without your explicit digital authorization.</p>
-              </div>
-
-              <div className="feature-card" style={{ borderLeft: '6px solid #DC2626' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
-                  <div style={{ background: '#FEF2F2', padding: '1rem', borderRadius: '12px' }}>🗑️</div>
-                  <h3 style={{ fontSize: '1.6rem', color: '#DC2626' }}>Right to Erasure</h3>
-                </div>
-                <p style={{ color: '#64748B', lineHeight: '1.8', fontSize: '1.05rem' }}>Full Section 12 compliance. Exercise your right to be forgotten. Trigger 1-click ledger-anchored requests to purge your clinical footprint across the network.</p>
-
-              </div>
-
-              <div className="feature-card" style={{ borderLeft: '6px solid #059669' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
-                  <div style={{ background: '#ECFDF5', padding: '1rem', borderRadius: '12px' }}>🔍</div>
-                  <h3 style={{ fontSize: '1.6rem', color: '#059669' }}>Audit Hierarchy</h3>
-                </div>
-                <p style={{ color: '#64748B', lineHeight: '1.8', fontSize: '1.05rem' }}>Real-time transparency for data interactions. Fiduciaries are held accountable through an irreversible Hedera blockchain audit trail of all access events.</p>
-
               </div>
             </div>
+
+            {/* Footer */}
+            <footer style={{
+              background: 'linear-gradient(180deg, #1F332C 0%, #15231F 100%)',
+              borderTop: '2px solid #315046',
+              padding: '6rem 2rem 3rem 2rem',
+              color: 'white',
+              position: 'relative',
+              overflow: 'hidden'
+            }}>
+              <style>{`
+                .footer-link-premium { transition: all 0.3s ease; }
+                .footer-link-premium:hover { color: #A8C256 !important; transform: translateX(5px); }
+              `}</style>
+              <div style={{ maxWidth: '1400px', margin: '0 auto' }}>
+                <div style={{ display: 'grid', gridTemplateColumns: '1.5fr 1fr 1fr 1fr', gap: '4rem', marginBottom: '4rem', width: '100%', justifyContent: 'space-between' }}>
+                  {/* Brand Section */}
+                  <div>
+                    <div style={{ marginBottom: '2.5rem' }}>
+                      <div style={{ 
+                        display: 'inline-flex', 
+                        alignItems: 'center', 
+                        justifyContent: 'center',
+                        padding: '16px',
+                        background: 'rgba(255, 255, 255, 0.03)',
+                        backdropFilter: 'blur(10px)',
+                        borderRadius: '20px',
+                        border: '1px solid rgba(168, 194, 86, 0.2)',
+                        boxShadow: '0 8px 32px rgba(0,0,0,0.2), inset 0 0 20px rgba(255,255,255,0.05)'
+                      }}>
+                        <img 
+                          src="/logo.jpg" 
+                          alt="Ojasraksha Logo" 
+                          style={{ height: '72px', borderRadius: '8px' }} 
+                        />
+                      </div>
+                    </div>
+                    <p style={{ color: '#A3B3AF', fontSize: '0.95rem', lineHeight: 1.7, maxWidth: '280px', marginBottom: '2rem' }}>
+                      Pioneering the future of HIPAA and GDPR compliant health data governance.
+                    </p>
+                  </div>
+
+                  {/* Compliance */}
+                  <div>
+                    <p style={{ fontSize: '0.8rem', fontWeight: '800', letterSpacing: '0.15em', color: '#A8C256', textTransform: 'uppercase', marginBottom: '2rem' }}>Compliance</p>
+                    <a href="/dpdp.pdf" target="_blank" rel="noopener noreferrer" style={{ color: '#A3B3AF', fontSize: '0.95rem', textDecoration: 'none', transition: 'color 0.2s ease', display: 'block', marginBottom: '1rem' }}
+                      onMouseEnter={e => e.target.style.color = 'white'}
+                      onMouseLeave={e => e.target.style.color = '#A3B3AF'}
+                    >
+                      DPDP Act 2023
+                    </a>
+                  </div>
+
+                  {/* Contact */}
+                  <div>
+                    <p style={{ fontSize: '0.8rem', fontWeight: '800', letterSpacing: '0.15em', color: '#A8C256', textTransform: 'uppercase', marginBottom: '2rem' }}>Contact</p>
+                    <a href="mailto:ojasraksha@gmail.com" style={{ color: '#A3B3AF', fontSize: '0.95rem', textDecoration: 'none', transition: 'color 0.2s ease' }}
+                      onMouseEnter={e => e.target.style.color = 'white'}
+                      onMouseLeave={e => e.target.style.color = '#A3B3AF'}
+                    >
+                      ojasraksha@gmail.com
+                    </a>
+                  </div>
+                </div>
+
+                <div style={{ borderTop: '1px solid rgba(168, 194, 86, 0.1)', paddingTop: '2.5rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1.5rem' }}>
+                  <span style={{ color: '#6A8F90', fontSize: '0.9rem', fontWeight: '500' }}>
+                    © 2026 Ojasraksha Inc. All rights reserved.
+                  </span>
+                  <div style={{ display: 'flex', gap: '2rem' }}>
+                    {['Privacy Policy', 'Terms of Service', 'Cookie Policy'].map(l => (
+                      <span key={l} style={{ 
+                        color: '#6A8F90', fontSize: '0.85rem', cursor: 'pointer', fontWeight: '500', 
+                        transition: 'color 0.2s ease' 
+                      }}
+                        onMouseEnter={e => e.target.style.color = '#A8C256'}
+                        onMouseLeave={e => e.target.style.color = '#6A8F90'}
+                      >{l}</span>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            </footer>
           </div>
         </>
       ) : showContextSelection ? (

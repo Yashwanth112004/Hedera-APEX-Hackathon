@@ -1,17 +1,17 @@
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Poppins:wght@400;500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800;900&display=swap');
 
 :root {
-  font-family: 'Inter', system-ui, -apple-system, sans-serif;
+  font-family: 'Outfit', system-ui, -apple-system, sans-serif;
   line-height: 1.5;
   font-weight: 400;
 
-  /* Premium Healthcare Color Palette */
-  --medical-primary: #14B8A6;    /* Teal */
-  --medical-primary-dark: #0F766E;
-  --medical-accent: #3B82F6;     /* Medical Blue */
-  --medical-highlight: #2DD4BF;  /* Mint */
-  --medical-aqua: #06B6D4;       /* Cyan/Aqua */
-  --background-soft: #F8FAFC;    /* Slate 50 */
+  /* Ojasraksha Organic Color Palette */
+  --medical-primary: #315046;    /* Deep Slate Green */
+  --medical-primary-dark: #1F332C; /* Darker Slate */
+  --medical-accent: #6A8F90;     /* Muted Teal Petal */
+  --medical-highlight: #A8C256;  /* Bright Organic Green Petal */
+  --medical-aqua: #D4A373;       /* Muted Gold Petal */
+  --background-soft: #F0F4F2;    /* Soft Sage Background */
   --text-main: #334155;          /* Slate 700 */
   --text-muted: #64748B;         /* Slate 500 */
   --text-secondary: #64748B;     /* Slate 500 */
@@ -23,16 +23,17 @@
   --status-rejected: #EF4444;    /* Red */
 
   /* Gradients */
-  --grad-teal: linear-gradient(135deg, #14B8A6, #0F766E);
-  --grad-soft: linear-gradient(135deg, #F8FAFC, #F1F5F9);
-  --grad-glow: linear-gradient(135deg, rgba(20, 184, 166, 0.1), rgba(59, 130, 246, 0.1));
+  --grad-teal: linear-gradient(135deg, #315046, #1F332C);
+  --grad-medical: linear-gradient(90deg, #6A8F90, #A8C256);
+  --grad-soft: linear-gradient(135deg, #F0F4F2, #E6EAE8);
+  --grad-glow: linear-gradient(135deg, rgba(49, 80, 70, 0.1), rgba(106, 143, 144, 0.1));
 
   /* Elevation & Depth */
   --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.05);
   --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
   --shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1);
   --shadow-xl: 0 20px 25px -5px rgb(0 0 0 / 0.1), 0 8px 10px -6px rgb(0 0 0 / 0.1);
-  --shadow-medical: 0 12px 24px -6px rgba(15, 118, 110, 0.12), 0 4px 12px -4px rgba(15, 118, 110, 0.08);
+  --shadow-medical: 0 12px 24px -6px rgba(49, 80, 70, 0.12), 0 4px 12px -4px rgba(49, 80, 70, 0.08);
 
   /* Glassmorphism Specs */
   --glass-bg: rgba(255, 255, 255, 0.7);
@@ -46,7 +47,7 @@
   --radius-xl: 24px;
 
   color-scheme: light;
-  background-color: var(--background-soft);
+  background-color: #F0F4F2; /* Soft Sage Background */
   color: var(--text-main);
 }
 
@@ -60,16 +61,17 @@
 body {
   min-height: 100vh;
   background: var(--background-soft);
-  background: radial-gradient(circle at top right, rgba(20, 184, 166, 0.05), transparent 40%),
-              radial-gradient(circle at bottom left, rgba(59, 130, 246, 0.05), transparent 40%);
+  background: radial-gradient(circle at top right, rgba(106, 143, 144, 0.05), transparent 50%),
+              radial-gradient(circle at bottom left, rgba(168, 194, 86, 0.04), transparent 50%);
   color: var(--text-main);
   transition: background-color 0.3s ease;
 }
 
 h1, h2, h3, h4 {
-  font-family: 'Poppins', sans-serif;
-  font-weight: 600;
+  font-family: 'Outfit', sans-serif;
+  font-weight: 700;
   color: var(--text-main);
+  letter-spacing: -0.02em;
 }
 
 /* Glass Utility Classes */
@@ -99,7 +101,7 @@ h1, h2, h3, h4 {
 
 /* Buttons */
 button {
-  font-family: 'Inter', sans-serif;
+  font-family: 'Outfit', sans-serif;
   font-weight: 600;
   height: 48px; /* Standardize height for perfect alignment */
   padding: 0 1.5rem;
@@ -141,6 +143,94 @@ button {
   border-color: var(--medical-primary);
   transform: translateY(-2px);
   box-shadow: var(--shadow-md);
+}
+
+.hero-primary-btn {
+  background: #0F172A;
+  color: white;
+  padding: 0.8rem 2.2rem;
+  border-radius: 12px;
+  font-size: 1.1rem;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  gap: 0.8rem;
+  transition: all 0.3s ease;
+}
+
+.hero-primary-btn:hover {
+  background: #1E293B;
+  transform: translateY(-2px);
+  box-shadow: 0 10px 25px -10px rgba(15, 23, 42, 0.4);
+}
+
+.hero-secondary-btn {
+  background: #E0EBFF;
+  color: #1E293B;
+  padding: 0.8rem 2.2rem;
+  border-radius: 12px;
+  font-size: 1.1rem;
+  font-weight: 700;
+  transition: all 0.3s ease;
+}
+
+.hero-secondary-btn:hover {
+  background: #D1E1FF;
+  transform: translateY(-2px);
+}
+
+.hero-badge-container {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.5rem 1.25rem;
+  background: #F1F5F9;
+  border: 1px solid #E2E8F0;
+  border-radius: 30px;
+  font-size: 0.9rem;
+  font-weight: 600;
+  margin-bottom: 2.5rem;
+  color: #475569;
+}
+
+.hero-badge-version {
+  color: #3B82F6;
+  margin-left: 0.5rem;
+}
+
+.grad-text-medical {
+  background: var(--grad-medical);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  display: inline-block;
+}
+
+.sidebar-float-icon {
+  position: absolute;
+  left: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 15px;
+  z-index: 10;
+}
+
+.float-icon-btn {
+  width: 44px;
+  height: 44px;
+  background: white;
+  border: 1px solid #E2E8F0;
+  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05);
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.float-icon-btn:hover {
+  background: #F8FAFC;
+  transform: scale(1.05);
 }
 
 /* Form Inputs */
@@ -217,4 +307,20 @@ button {
 
 ::-webkit-scrollbar-thumb:hover {
   background: #94A3B8;
+}
+
+.feature-card-enhanced:hover {
+  transform: translateY(-8px);
+  box-shadow: 0 20px 40px rgba(15, 23, 42, 0.08) !important;
+  border-color: #3B82F6 !important;
+}
+
+.arch-node.active {
+  animation: pulse-glow 2s infinite;
+}
+
+@keyframes pulse-glow {
+  0% { box-shadow: 0 0 10px rgba(59, 130, 246, 0.1); }
+  50% { box-shadow: 0 0 25px rgba(59, 130, 246, 0.3); }
+  100% { box-shadow: 0 0 10px rgba(59, 130, 246, 0.1); }
 }

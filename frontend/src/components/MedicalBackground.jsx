@@ -41,7 +41,7 @@ const MedicalBackground = () => {
       height: '100%',
       zIndex: -1,
       pointerEvents: 'none',
-      opacity: 0.6
+      opacity: 0.3
     }}>
       <Canvas 
         camera={{ position: [0, 0, 10], fov: 50 }}
@@ -57,11 +57,11 @@ const MedicalBackground = () => {
         <pointLight position={[10, 10, 10]} intensity={1} />
         <spotLight position={[-10, 10, 10]} angle={0.15} penumbra={1} />
         
-        {/* Decorative Particles / Molecules */}
-        <Molecule position={[-6, 4, 0]} color="#14B8A6" speed={1.5} distort={0.4} />
-        <Molecule position={[7, -3, -2]} color="#3B82F6" speed={1.2} distort={0.2} />
-        <Molecule position={[-3, -5, 1]} color="#DC2626" speed={2} distort={0.5} />
-        <Molecule position={[5, 5, -3]} color="#2DD4BF" speed={1} distort={0.3} />
+        {/* Decorative Particles / Molecules - More subtle colors */}
+        <Molecule position={[-6, 4, 0]} color="#3B82F6" speed={1.5} distort={0.4} />
+        <Molecule position={[7, -3, -2]} color="#E2E8F0" speed={1.2} distort={0.2} />
+        <Molecule position={[-3, -5, 1]} color="#CBD5E1" speed={2} distort={0.5} />
+        <Molecule position={[5, 5, -3]} color="#3B82F6" speed={1} distort={0.3} />
         
         {/* Background Grid / Connection Lines style */}
         <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -10, 0]}>

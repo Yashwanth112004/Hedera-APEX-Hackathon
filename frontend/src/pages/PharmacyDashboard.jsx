@@ -21,7 +21,6 @@ const PharmacyDashboard = ({
     const [dispensedId, setDispensedId] = useState(null);
     const [ipfsCid, setIpfsCid] = useState(''); // Added for manual/linked decryption
     const [searchTerm, setSearchTerm] = useState('');
-    const [recentlyRequested, setRecentlyRequested] = useState({}); // Tracking session-based requests
 
     const fetchPrescriptions = async () => {
         console.log("[Pharmacy] Fetching prescriptions from ledger...");
@@ -45,6 +44,7 @@ const PharmacyDashboard = ({
 
                     let authorized = false;
                     let patientShortId = "N/A";
+                    let hasPendingRequest = false;
                     const activeLinked = [];
 
                     // Fetch Short ID if mapper available
@@ -62,6 +62,10 @@ const PharmacyDashboard = ({
                             console.log(`[Pharmacy-Diag] Found ${patientConsents.length} total consents for patient ${rx?.patient?.slice(0,8) || 'Unknown'}`);
                         }
 
+                        // Also fetch pending requests to see if we have one outstanding
+                        const pendingReqs = await getSafePendingRequests(readConsent, rx.patient, consentContract.target, provider);
+                        hasPendingRequest = (pendingReqs || []).some(req => req.provider.toLowerCase() === account.toLowerCase() && req.isPending);
+
                         (patientConsents || []).forEach(c => {
                             const p = (c?.purpose || "").toLowerCase();
                             const isPharmaPurpose = p.includes('medication') || 
@@ -74,7 +78,7 @@ const PharmacyDashboard = ({
 
                             const isFiduciary = c?.dataFiduciary?.toLowerCase() === account?.toLowerCase();
                             const isExpired = Number(c?.expiry || 0) <= Math.floor(Date.now() / 1000);
-
+                            
                             if (isFiduciary) {
                                 console.log(`[Pharmacy-Diag] Match found: Active=${c.isActive}, Purpose="${p}" (isPharma=${isPharmaPurpose}), Expired=${isExpired}`);
                             }
@@ -109,6 +113,7 @@ const PharmacyDashboard = ({
                         cid: rx?.cid || 'N/A',
                         status: 'Pending',
                         isAuthorized: authorized,
+                        hasPendingRequest: hasPendingRequest,
                         linked: activeLinked
                     };
                 }))).filter(item => item !== null);
@@ -142,8 +147,8 @@ const PharmacyDashboard = ({
         try {
             toast.info("Sending formal access request to Patient...");
             const tx = await consentContract.requestAccess(wallet, "Pharmacy Dispensation Verification", { gasLimit: 1000000 });
-            setRecentlyRequested(prev => ({ ...prev, [wallet?.toLowerCase() || '']: true }));
             await tx.wait();
+            fetchPrescriptions(); // Refresh to show "Waiting" status
             toast.success("Access Request sent! Waiting for patient approval.");
         } catch (err) {
             toast.error("Failed to send access request");
@@ -247,11 +252,8 @@ const PharmacyDashboard = ({
                     <p style={{ fontSize: '0.9rem', color: 'var(--text-muted)', marginBottom: '1.5rem' }}>Refresh the global active prescription queue from the ledger.</p>
 
                     <div style={{ display: 'flex', gap: '0.5rem' }}>
-                        <button className="primary-btn" onClick={fetchPrescriptions} disabled={loading} style={{ flex: 2 }}>
+                        <button className="primary-btn" onClick={fetchPrescriptions} disabled={loading} style={{ width: '100%' }}>
                             {loading ? "..." : "Sync Ledger Queue"}
-                        </button>
-                        <button className="secondary-btn" onClick={() => setRecentlyRequested({})} style={{ flex: 1, fontSize: '0.75rem' }}>
-                            Reset Session
                         </button>
                     </div>
                 </div>
@@ -302,29 +304,19 @@ const PharmacyDashboard = ({
                                         <td style={{ fontFamily: 'monospace', fontSize: '0.85em', color: 'var(--text-muted)' }}>{px?.patient?.slice(0, 8) || 'N/A'}...</td>
                                         <td>
                                             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
-                                                {(() => {
-                                                    const patientKey = px?.patient?.toLowerCase();
-                                                    
-                                                    if (px.isAuthorized) {
-                                                        return (
-                                                            <button className="primary-btn" onClick={() => decryptPrescription(px)} style={{ padding: '0.4rem 0.8rem', fontSize: '0.8rem' }}>
-                                                                🔓 Decrypt RX
-                                                            </button>
-                                                        );
-                                                    } else if (recentlyRequested[patientKey]) {
-                                                        return (
-                                                            <button className="secondary-btn" disabled style={{ padding: '0.4rem 0.8rem', fontSize: '0.8rem', opacity: 0.6, cursor: 'not-allowed' }}>
-                                                                ⏳ Waiting for Approval
-                                                            </button>
-                                                        );
-                                                    } else {
-                                                        return (
-                                                            <button className="secondary-btn" onClick={() => requestAccess(px.patient)} style={{ padding: '0.4rem 0.8rem', fontSize: '0.8rem' }}>
-                                                                Request Access
-                                                            </button>
-                                                        );
-                                                    }
-                                                })()}
+                                                {px.isAuthorized ? (
+                                                    <button className="primary-btn" onClick={() => decryptPrescription(px)} style={{ padding: '0.4rem 0.8rem', fontSize: '0.8rem' }}>
+                                                        🔓 Decrypt RX
+                                                    </button>
+                                                ) : px.hasPendingRequest ? (
+                                                    <button className="secondary-btn" disabled style={{ padding: '0.4rem 0.8rem', fontSize: '0.8rem', opacity: 0.6, cursor: 'not-allowed' }}>
+                                                        ⏳ Waiting for Approval
+                                                    </button>
+                                                ) : (
+                                                    <button className="secondary-btn" onClick={() => requestAccess(px.patient)} style={{ padding: '0.4rem 0.8rem', fontSize: '0.8rem' }}>
+                                                        Request Access
+                                                    </button>
+                                                )}
                                             </div>
                                         </td>
                                     </tr>
@@ -356,25 +348,15 @@ const PharmacyDashboard = ({
                                         <td>{r?.purpose || 'Shared Content'}</td>
                                         <td style={{ fontFamily: 'monospace', fontSize: '0.8rem', color: 'var(--text-muted)' }}>{r?.cid?.slice(0, 16) || 'N/A'}...</td>
                                         <td>
-                                            {recentlyRequested[r.patientWallet?.toLowerCase()] === true ? (
-                                                <button 
-                                                    className="primary-btn" 
-                                                    style={{ padding: '0.4rem 0.8rem', fontSize: '0.8rem' }}
-                                                    onClick={() => {
-                                                        decryptPrescription({ cid: r.cid, patientName: r.patientName, id: 'external', patient: r.patientWallet });
-                                                    }}
-                                                >
-                                                    🔓 View
-                                                </button>
-                                            ) : (
-                                                <button 
-                                                    className="secondary-btn" 
-                                                    style={{ padding: '0.4rem 0.8rem', fontSize: '0.8rem' }}
-                                                    onClick={() => requestAccess(r.patientWallet)}
-                                                >
-                                                    Start Session
-                                                </button>
-                                            )}
+                                            <button 
+                                                className="primary-btn" 
+                                                style={{ padding: '0.4rem 0.8rem', fontSize: '0.8rem' }}
+                                                onClick={() => {
+                                                    decryptPrescription({ cid: r.cid, patientName: r.patientName, id: 'external', patient: r.patientWallet });
+                                                }}
+                                            >
+                                                🔓 View
+                                            </button>
                                         </td>
                                     </tr>
                                 ))}

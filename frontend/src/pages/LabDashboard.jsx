@@ -70,7 +70,8 @@ const LabDashboard = ({
   medicalRecordsContract,
   walletMapperContract,
   consentContract,
-  auditLogContract
+  auditLogContract,
+  hapiProvider
 }) => {
   const [showUploadForm, setShowUploadForm] = useState(false);
   const [uploadData, setUploadData] = useState({
@@ -95,6 +96,14 @@ const LabDashboard = ({
   const [requestData, setRequestData] = useState({ patientWallet: '', purpose: '', requesterName: '', scope: 'Lab Reports' });
   const [viewDataSettings, setViewDataSettings] = useState({ scope: 'Lab Reports', purpose: 'Diagnostic Review' });
   const [scannedPatient, setScannedPatient] = useState('');
+
+  const [interactionHistory, setInteractionHistory] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [activeConsents, setActiveConsents] = useState([]);
+  const [ipfsCid, setIpfsCid] = useState('');
+  const [isDecrypting, setIsDecrypting] = useState(false);
+  const [decryptedRecord, setDecryptedRecord] = useState(null);
+  const [viewingReport, setViewingReport] = useState(null);
 
 
   React.useEffect(() => {
@@ -133,7 +142,7 @@ const LabDashboard = ({
           let short = "N/A";
           if (walletMapperContract) {
             try {
-              const mapperRead = walletMapperContract.connect(provider);
+              const mapperRead = walletMapperContract.connect(hapi);
               short = await mapperRead.getShortIDFromWallet(wallet);
             } catch (e) { console.warn("Short ID resolve failed", e); }
           }
@@ -145,7 +154,8 @@ const LabDashboard = ({
       }
     };
     loadHistory();
-  }, [auditLogContract, account]);
+  }, [auditLogContract, account, hapiProvider, walletMapperContract]);
+
 
   React.useEffect(() => {
     if (interactionHistory.length > 0) {
