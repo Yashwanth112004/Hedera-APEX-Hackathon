@@ -239,7 +239,7 @@ const DoctorDashboard = ({
             } else {
                 toast.info("Fetching mapped records from Hedera...");
             }
-            
+
             if (medicalRecordsContract) {
                 const provider = new ethers.BrowserProvider(window.ethereum);
                 const readContract = medicalRecordsContract.connect(provider);
@@ -266,11 +266,11 @@ const DoctorDashboard = ({
                     const patientConsents = await getSafePatientConsents(consentReadContract, targetWallet, consentContract.target, provider);
 
                     const normalizedDoctor = account.toLowerCase();
-                    
+
                     (patientConsents || []).forEach(c => {
                         // In emergency Mode, we take ALL active consents, regardless of who the fiduciary is
                         const isAuthorized = isEmergency || (c?.dataFiduciary?.toLowerCase() === normalizedDoctor);
-                        
+
                         if (c?.isActive && isAuthorized && c?.dataHash) {
                             const cids = c.dataHash.split(',');
                             cids.forEach(cid => {
@@ -706,10 +706,10 @@ const DoctorDashboard = ({
                             <button className="close-btn" onClick={() => setShowEmergencyModal(false)}>×</button>
                         </div>
                         <div className="modal-body">
-                            <div style={{ 
-                                background: '#FEF2F2', 
-                                padding: '1.25rem', 
-                                borderRadius: '12px', 
+                            <div style={{
+                                background: '#FEF2F2',
+                                padding: '1.25rem',
+                                borderRadius: '12px',
                                 border: '1px solid #FCA5A5',
                                 display: 'flex',
                                 gap: '1rem',

@@ -1,8 +1,9 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { toast } from 'react-toastify';
 import { ethers } from 'ethers';
 import { fetchFromPinata, decryptData } from '../utils/ipfsHelper';
-import { getSafePatientConsents } from '../utils/consentHelper';
+import { getSafePatientConsents, getSafePendingRequests } from '../utils/consentHelper';
+import { normalizeAddress } from '../utils/idMappingHelper';
 
 const PharmacyDashboard = ({ 
     account, 
@@ -21,102 +22,132 @@ const PharmacyDashboard = ({
     const [dispensedId, setDispensedId] = useState(null);
     const [ipfsCid, setIpfsCid] = useState(''); // Added for manual/linked decryption
     const [searchTerm, setSearchTerm] = useState('');
+    const isFetchingRef = useRef(false);
 
     const fetchPrescriptions = async () => {
-        console.log("[Pharmacy] Fetching prescriptions from ledger...");
-        if (!medicalRecordsContract) console.warn("[Pharmacy] medicalRecordsContract is null");
-        if (!consentContract) console.warn("[Pharmacy] consentContract is null");
-        if (!account) console.warn("[Pharmacy] account is null");
-        
         if (!medicalRecordsContract || !consentContract || !account) return;
+        if (isFetchingRef.current) return;
+        
+        console.log("[Pharmacy] Fetching prescriptions from ledger...");
+        isFetchingRef.current = true;
         setLoading(true);
+        
         try {
             const provider = new ethers.BrowserProvider(window.ethereum);
             const readMedical = medicalRecordsContract.connect(provider);
-                const readConsent = consentContract.connect(provider);
+            const readConsent = consentContract.connect(provider);
 
                 console.log("[Pharmacy] Calling getPendingPrescriptions...");
-                const rawQueue = await readMedical.getPendingPrescriptions();
-                console.log(`[Pharmacy] Found ${rawQueue.length} items in queue`);
+                const rawQueue = await readMedical.getFunction("getPendingPrescriptions")();
+                console.log(`[Pharmacy] Checking ${rawQueue.length} raw items from ledger...`);
+                if (!walletMapperContract) console.warn("[Pharmacy] walletMapperContract is NIL/Null!");
 
-                const formatted = (await Promise.all((rawQueue || []).map(async (rx) => {
-                    if (rx.isDispensed) return null; // Filter out dispensed ones at source
+                // DEDUPLICATION: Ensure unique (Patient + CID) combinations (prevents UI spam)
+                const uniqueRows = [];
+                const seenKeys = new Set();
+                (rawQueue || []).forEach(rx => {
+                    const cid = rx.cid?.trim() || "N/A";
+                    const patient = normalizeAddress(rx.patient);
+                    const key = `${patient.toLowerCase()}-${cid}`;
+                    console.log(`[Pharmacy-Item] RecordId: ${rx.recordId.toString()}, Patient: ${patient.slice(0,8)}, CID: ${cid.slice(0,10)}... Key: ${key}`);
+                    if (!seenKeys.has(key)) {
+                        seenKeys.add(key);
+                        uniqueRows.push({ raw: rx, normalizedPatient: patient }); 
+                    } else {
+                        console.log(`[Pharmacy] Deduplicated duplicate item for Key: ${key}`);
+                    }
+                });
+                console.log(`[Pharmacy] Unique items after deduplication: ${uniqueRows.length}`);
+
+                // BATCH PROCESSING: Group by patient to minimize on-chain calls
+                const patientDataCache = {}; // patientWallet -> { consents, pendingReqs, shortId }
+                const uniquePatients = [...new Set(uniqueRows.map(item => item.normalizedPatient))];
+                
+                await Promise.all(uniquePatients.map(async (patientWallet) => {
+                    try {
+                        const safeWallet = normalizeAddress(patientWallet);
+                        console.log(`[Pharmacy] Fetching on-chain data for: ${safeWallet}`);
+                        const [consents, pendingReqs, sid] = await Promise.all([
+                            getSafePatientConsents(readConsent, safeWallet, consentContract.target, provider),
+                            getSafePendingRequests(readConsent, safeWallet, consentContract.target, provider),
+                            walletMapperContract ? walletMapperContract.getFunction("getShortIDFromWallet")(safeWallet) : Promise.resolve("N/A")
+                        ]);
+                        console.log(`[Pharmacy] Result for ${safeWallet.slice(0,8)}: Consents=${consents.length}, Pending=${pendingReqs.length}, ShortID=${sid || 'EMPTY'}`);
+                        patientDataCache[safeWallet] = { 
+                            consents, 
+                            pendingReqs, 
+                            shortId: (sid && sid !== "") ? sid : "N/A" 
+                        };
+                    } catch (err) {
+                        console.error(`[Pharmacy] Failed data fetch for ${patientWallet}`, err);
+                        patientDataCache[patientWallet] = { consents: [], pendingReqs: [], shortId: "N/A" };
+                    }
+                }));
+
+                const formatted = (uniqueRows.map((item) => {
+                    const rx = item.raw;
+                    const patientWallet = item.normalizedPatient;
+                    const { consents, pendingReqs, shortId } = patientDataCache[patientWallet] || { consents: [], pendingReqs: [], shortId: "N/A" };
 
                     let authorized = false;
-                    let patientShortId = "N/A";
-                    let hasPendingRequest = false;
+                    let hasPendingRequest = (pendingReqs || []).some(req => req.provider.toLowerCase() === account.toLowerCase() && req.isPending);
                     const activeLinked = [];
 
-                    // Fetch Short ID if mapper available
-                    if (walletMapperContract) {
-                        try {
-                            const sid = await walletMapperContract.getShortIDFromWallet(rx.patient);
-                            if (sid && sid !== "") patientShortId = sid;
-                        } catch (e) { console.warn("Short ID fetch failed", e); }
-                    }
+                    (consents || []).forEach(c => {
+                        const p = (c?.purpose || "").toLowerCase();
+                        const isPharmaPurpose = p.includes('medication') || 
+                                             p.includes('dispensation') || 
+                                             p.includes('prescription') || 
+                                             p.includes('pharmacy') ||
+                                             p.includes('clinical') || 
+                                             p === "all" ||
+                                             p.includes('medical');
 
-                    try {
-                        const patientConsents = await getSafePatientConsents(readConsent, rx.patient, consentContract.target, provider);
+                        const isFiduciary = c?.dataFiduciary?.toLowerCase() === account?.toLowerCase();
+                        const isExpired = Number(c?.expiry || 0) <= Math.floor(Date.now() / 1000);
                         
-                        if (patientConsents?.length > 0) {
-                            console.log(`[Pharmacy-Diag] Found ${patientConsents.length} total consents for patient ${rx?.patient?.slice(0,8) || 'Unknown'}`);
+                        if (isFiduciary) {
+                            console.log(`[Pharmacy-Diag] Checking consent: Patient=${patientWallet.slice(0,8)}, Fiduciary=${c.dataFiduciary.toLowerCase().slice(0,8)}, MyAccount=${account.toLowerCase().slice(0,8)}, Active=${c.isActive}, Purpose="${p}" (isPharma=${isPharmaPurpose}), Expired=${isExpired}`);
                         }
 
-                        // Also fetch pending requests to see if we have one outstanding
-                        const pendingReqs = await getSafePendingRequests(readConsent, rx.patient, consentContract.target, provider);
-                        hasPendingRequest = (pendingReqs || []).some(req => req.provider.toLowerCase() === account.toLowerCase() && req.isPending);
+                        if (isFiduciary && c.isActive && isPharmaPurpose && !isExpired) {
+                            // STRICT CHECK: Only authorize if it's an explicit wildcard OR the specific CID is included
+                            const isGlobalConsent = c.dataHash === "QmMedicalReportHash" || c.dataHash === "All";
 
-                        (patientConsents || []).forEach(c => {
-                            const p = (c?.purpose || "").toLowerCase();
-                            const isPharmaPurpose = p.includes('medication') || 
-                                                 p.includes('dispensation') || 
-                                                 p.includes('prescription') || 
-                                                 p.includes('pharmacy') ||
-                                                 p.includes('clinical') || // Inclusive fallback
-                                                 p === "all" ||
-                                                 p.includes('medical');
-
-                            const isFiduciary = c?.dataFiduciary?.toLowerCase() === account?.toLowerCase();
-                            const isExpired = Number(c?.expiry || 0) <= Math.floor(Date.now() / 1000);
-                            
-                            if (isFiduciary) {
-                                console.log(`[Pharmacy-Diag] Match found: Active=${c.isActive}, Purpose="${p}" (isPharma=${isPharmaPurpose}), Expired=${isExpired}`);
-                            }
-
-                            if (isFiduciary && c.isActive && isPharmaPurpose && !isExpired) {
+                            if (isGlobalConsent || (c.dataHash && c.dataHash.includes(rx.cid))) {
                                 authorized = true;
-                                if (c?.dataHash) {
-                                    const cids = c.dataHash.split(',');
-                                    cids.forEach(cid => {
-                                        const trimmed = cid?.trim();
-                                        if (trimmed) {
-                                            activeLinked.push({
-                                                cid: trimmed,
-                                                purpose: c.purpose,
-                                                patientName: rx.patientName,
-                                                patientWallet: rx.patient
-                                            });
-                                        }
-                                    });
-                                }
                             }
-                        });
-                    } catch (cErr) {
-                        console.error("Consent check failed for", rx.patient, cErr);
-                    }
+                            
+                            // Collect linked CIDs regardless (for specifically shared UI)
+                            if (c?.dataHash && !isGlobalConsent) {
+                                const cids = c.dataHash.split(',');
+                                cids.forEach(cid => {
+                                    const trimmed = cid?.trim();
+                                    if (trimmed) {
+                                        activeLinked.push({
+                                            cid: trimmed,
+                                            purpose: c.purpose,
+                                            patientName: rx.patientName,
+                                            patientWallet: rx.patient
+                                        });
+                                    }
+                                });
+                            }
+                        }
+                    });
 
                     return {
                         id: rx?.recordId?.toString() || Math.random().toString(),
                         patient: rx?.patient || 'Unknown',
                         patientName: rx?.patientName || 'N/A',
-                        patientShortId,
+                        patientShortId: shortId,
                         cid: rx?.cid || 'N/A',
                         status: 'Pending',
                         isAuthorized: authorized,
                         hasPendingRequest: hasPendingRequest,
                         linked: activeLinked
                     };
-                }))).filter(item => item !== null);
+                }));
 
             setPrescriptions(formatted.reverse()); 
             
@@ -128,6 +159,7 @@ const PharmacyDashboard = ({
             toast.error("Failed to sync ledger queue");
         } finally {
             setLoading(false);
+            isFetchingRef.current = false;
         }
     };
 
@@ -136,7 +168,7 @@ const PharmacyDashboard = ({
         
         // Auto-refresh every 12 seconds to catch on-chain approvals without manual sync
         const interval = setInterval(() => {
-            if (!loading) fetchPrescriptions();
+            fetchPrescriptions();
         }, 12000);
         
         return () => clearInterval(interval);
@@ -170,6 +202,25 @@ const PharmacyDashboard = ({
                 cid: px.cid
             });
             setDispensedId(null);
+            
+            // Log decryption action on-chain for compliance
+            if (auditLogContract && px.patient) {
+                try {
+                    const nowSecs = Math.floor(Date.now() / 1000);
+                    const tx = await auditLogContract.logDataAccessed(
+                        px.patient, 
+                        account, 
+                        `Decrypted Prescription (CID: ${px.cid.slice(0, 8)}...)`, 
+                        nowSecs, 
+                        { gasLimit: 500000 }
+                    );
+                    // Don't wait for tx confirmation to avoid blocking UI, let it process in background
+                    console.log("[Pharmacy] Audit log transaction sent:", tx.hash);
+                } catch (auditErr) {
+                    console.error("[Pharmacy] Failed to securely log decryption action:", auditErr);
+                }
+            }
+
             toast.success("Prescription Decrypted Successfully");
         } catch (err) {
             toast.error("Decryption failed. Ensure patient has granted access.");

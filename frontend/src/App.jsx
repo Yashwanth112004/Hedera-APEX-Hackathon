@@ -723,7 +723,7 @@ function App() {
               animation: 'countUp 0.8s ease-out forwards'
             }}>
               <div style={{ maxWidth: '960px', width: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-                
+
                 {/* SaaS Badge */}
                 <div style={{
                   display: 'inline-flex', alignItems: 'center', gap: '8px',
@@ -746,7 +746,7 @@ function App() {
                   <span style={{ width: 8, height: 8, background: '#10B981', borderRadius: '50%', boxShadow: '0 0 8px rgba(16,185,129,0.5)' }}></span>
                   Secure Consent Management <span style={{ color: '#94A3B8' }}>|</span> <span style={{ color: '#3A73E7' }}>v2.4 Released</span>
                 </div>
-                
+
                 {/* Headline */}
                 <h1 style={{
                   color: '#0F172A',
@@ -784,7 +784,7 @@ function App() {
 
                 {/* CTA Buttons */}
                 <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap', justifyContent: 'center' }}>
-                  <button 
+                  <button
                     onClick={connectWallet}
                     style={{
                       background: '#315046',
@@ -813,7 +813,7 @@ function App() {
                     <ArrowRight size={20} strokeWidth={2.5} />
                   </button>
 
-                  <button 
+                  <button
                     onClick={() => setShowBeneficiaryLogin(true)}
                     style={{
                       background: 'rgba(241,245,249,0.8)',
@@ -962,8 +962,8 @@ function App() {
                         <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
                           {[
                             { id: 'PAT-8921', action: 'Consent Granted', status: 'VERIFIED', ok: true, time: '2s ago' },
-                            { id: 'DOC-3321', action: 'Data Accessed',   status: 'VERIFIED', ok: true, time: '18s ago' },
-                            { id: 'PAT-1142', action: 'Key Revoked',     status: 'ALERT',    ok: false, time: '1m ago' },
+                            { id: 'DOC-3321', action: 'Data Accessed', status: 'VERIFIED', ok: true, time: '18s ago' },
+                            { id: 'PAT-1142', action: 'Key Revoked', status: 'ALERT', ok: false, time: '1m ago' },
                           ].map(entry => (
                             <div key={entry.id} className="audit-row" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 8px', borderBottom: '1px solid #E8EDF5', transition: 'all 0.2s ease' }}>
                               <span style={{ fontSize: '0.82rem', color: '#475569', fontFamily: 'monospace', width: '90px', fontWeight: '600' }}>{entry.id}</span>
@@ -1004,9 +1004,9 @@ function App() {
                   {/* Brand Section */}
                   <div>
                     <div style={{ marginBottom: '2.5rem' }}>
-                      <div style={{ 
-                        display: 'inline-flex', 
-                        alignItems: 'center', 
+                      <div style={{
+                        display: 'inline-flex',
+                        alignItems: 'center',
                         justifyContent: 'center',
                         padding: '16px',
                         background: 'rgba(255, 255, 255, 0.03)',
@@ -1015,10 +1015,10 @@ function App() {
                         border: '1px solid rgba(168, 194, 86, 0.2)',
                         boxShadow: '0 8px 32px rgba(0,0,0,0.2), inset 0 0 20px rgba(255,255,255,0.05)'
                       }}>
-                        <img 
-                          src="/logo.jpg" 
-                          alt="Ojasraksha Logo" 
-                          style={{ height: '72px', borderRadius: '8px' }} 
+                        <img
+                          src="/logo.jpg"
+                          alt="Ojasraksha Logo"
+                          style={{ height: '72px', borderRadius: '8px' }}
                         />
                       </div>
                     </div>
@@ -1056,9 +1056,9 @@ function App() {
                   </span>
                   <div style={{ display: 'flex', gap: '2rem' }}>
                     {['Privacy Policy', 'Terms of Service', 'Cookie Policy'].map(l => (
-                      <span key={l} style={{ 
-                        color: '#6A8F90', fontSize: '0.85rem', cursor: 'pointer', fontWeight: '500', 
-                        transition: 'color 0.2s ease' 
+                      <span key={l} style={{
+                        color: '#6A8F90', fontSize: '0.85rem', cursor: 'pointer', fontWeight: '500',
+                        transition: 'color 0.2s ease'
                       }}
                         onMouseEnter={e => e.target.style.color = '#A8C256'}
                         onMouseLeave={e => e.target.style.color = '#6A8F90'}

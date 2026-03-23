@@ -12,7 +12,7 @@ const AuditLogs = ({ auditLogContract, account, role, hapiProvider }) => {
     try {
       setLoading(true);
       const readContract = hapiProvider ? auditLogContract.connect(hapiProvider) : auditLogContract;
-      
+
       let formattedLogs = [];
       try {
         const blockchainLogs = await readContract.getLogs();
@@ -51,19 +51,21 @@ const AuditLogs = ({ auditLogContract, account, role, hapiProvider }) => {
           filterEvents('AccessRequested', 'Access Requested')
         ]);
 
-        formattedLogs = [...granted, ...accessed, ...requested].sort((a,b) => new Date(a.timestamp) - new Date(b.timestamp));
+        formattedLogs = [...granted, ...accessed, ...requested]
+          .sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp))
+          .map((log, index) => ({ ...log, id: index + 10000 })); // Unique IDs for fallback logs
       }
 
       const isAdmin = role?.toLowerCase() === 'admin';
       const userAddr = account?.toLowerCase();
 
-      const finalLogs = isAdmin 
-        ? formattedLogs 
-        : formattedLogs.filter(l => 
-            l.patientAddress?.toLowerCase() === userAddr || 
-            l.hospitalAddress?.toLowerCase() === userAddr
-          );
-        
+      const finalLogs = isAdmin
+        ? formattedLogs
+        : formattedLogs.filter(l =>
+          l.patientAddress?.toLowerCase() === userAddr ||
+          l.hospitalAddress?.toLowerCase() === userAddr
+        );
+
       setLogs([...finalLogs].reverse()); // Show newest first
     } catch (err) {
       console.error("Failed to fetch audit logs:", err);

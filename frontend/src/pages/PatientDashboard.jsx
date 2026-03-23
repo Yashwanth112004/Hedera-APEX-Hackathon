@@ -613,8 +613,8 @@ const PatientDashboard = ({
   // Helper to check if a CID has been disbursed by insurance
   const isDisbursed = (cid) => {
     if (!cid || !auditLogs) return false;
-    return auditLogs.some(log => 
-      (log.action || "").includes("[DISBURSEMENT]") && 
+    return auditLogs.some(log =>
+      (log.action || "").includes("[DISBURSEMENT]") &&
       (log.action || "").includes(cid)
     );
   };

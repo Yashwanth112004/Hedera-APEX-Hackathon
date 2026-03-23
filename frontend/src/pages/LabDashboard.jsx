@@ -120,13 +120,13 @@ const LabDashboard = ({
           // Fallback: Query events from the last 10,000 blocks
           const filter = readAudit.filters.DataAccessed(null, account);
           const events = await readAudit.queryFilter(filter, -10000);
-            logs = events.map(ev => ({
-              dataPrincipal: ev?.args?.[0],
-              dataFiduciary: ev?.args?.[1],
-              action: "Data Accessed",
-              purpose: ev?.args?.[2],
-              timestamp: ev?.args?.[3]
-            }));
+          logs = events.map(ev => ({
+            dataPrincipal: ev?.args?.[0],
+            dataFiduciary: ev?.args?.[1],
+            action: "Data Accessed",
+            purpose: ev?.args?.[2],
+            timestamp: ev?.args?.[3]
+          }));
         }
 
         const normalizedLab = account.toLowerCase();
@@ -174,18 +174,18 @@ const LabDashboard = ({
       for (const item of interactionHistory) {
         const records = await readMedical.getPatientRecords(item.wallet);
         records.forEach(r => {
-            if (r.provider?.toLowerCase() === account?.toLowerCase()) {
-              allReports.push({
-                id: r?.id?.toString() || Math.random().toString(),
-                patient: item.wallet,
-                shortId: item.shortId,
-                type: r.recordType,
-                category: "Lab Report",
-                date: "On-Chain",
-                status: 'Completed',
-                cid: r.cid
-              });
-            }
+          if (r.provider?.toLowerCase() === account?.toLowerCase()) {
+            allReports.push({
+              id: r?.id?.toString() || Math.random().toString(),
+              patient: item.wallet,
+              shortId: item.shortId,
+              type: r.recordType,
+              category: "Lab Report",
+              date: "On-Chain",
+              status: 'Completed',
+              cid: r.cid
+            });
+          }
         });
       }
       setRecentReports(allReports);

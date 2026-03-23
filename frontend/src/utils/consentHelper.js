@@ -21,7 +21,7 @@ export const consentABIOld = [
 export const getSafePatientConsents = async (consentContract, patientAddress, contractAddress, provider) => {
     try {
         // Attempt normal fetch with current ABI
-        const res = await consentContract.getPatientConsents(patientAddress);
+        const res = await consentContract.getFunction("getPatientConsents")(patientAddress);
         // Normalize ethers.js Result tuples to plain JS objects
         // (Result proxy objects can lose property accessors when passed as React props)
         return res.map(c => ({
@@ -42,7 +42,7 @@ export const getSafePatientConsents = async (consentContract, patientAddress, co
             
             try {
                 const legacyContract = new ethers.Contract(contractAddress, consentABIOld, provider);
-                const legacyRes = await legacyContract.getPatientConsents(patientAddress);
+                const legacyRes = await legacyContract.getFunction("getPatientConsents")(patientAddress);
                 
                 // Map legacy Results (8 fields) to New Format (9 fields)
                 // New field added: dataScope (defaulting to "All")
@@ -73,13 +73,13 @@ export const getSafePatientConsents = async (consentContract, patientAddress, co
  */
 export const getSafePendingRequests = async (consentContract, patientAddress, contractAddress, provider) => {
     try {
-        return await consentContract.getPendingRequests(patientAddress);
+        return await consentContract.getFunction("getPendingRequests")(patientAddress);
     } catch (err) {
         if (err.code === "BAD_DATA" || (err.message && err.message.includes("could not decode"))) {
             console.warn(`[ConsentHelper] Request decoding failed for ${patientAddress}, trying legacy fallback...`);
             try {
                 const legacyContract = new ethers.Contract(contractAddress, consentABIOld, provider);
-                return await legacyContract.getPendingRequests(patientAddress);
+                return await legacyContract.getFunction("getPendingRequests")(patientAddress);
             } catch (fallbackErr) {
                 console.error("[ConsentHelper] Legacy request fallback failed:", fallbackErr);
                 return [];

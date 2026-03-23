@@ -84,7 +84,7 @@ const InsuranceDashboard = ({ account, consentContract, auditLogContract, access
                     const purpose = ev?.args?.[2] || "Access Request";
                     const amountMatch = purpose.match(/\| Amount: ([0-9.]+)/);
                     return {
-                        id: ev?.args?.[3]?.toString() || idx.toString(), 
+                        id: ev?.args?.[3]?.toString() || idx.toString(),
                         patient: ev?.args?.[0] || 'Unknown',
                         purpose: purpose,
                         amount: amountMatch ? amountMatch[1] : null,
@@ -122,7 +122,7 @@ const InsuranceDashboard = ({ account, consentContract, auditLogContract, access
                     if (!p) continue;
                     try {
                         const cons = await getSafePatientConsents(consentContract, p, consentContract.target, auditLogContract.runner.provider);
-                        
+
                         // Fetch the actual records from the contract to get bill amounts
                         let patientRecords = [];
                         if (medicalRecordsContract) {
@@ -289,7 +289,7 @@ const InsuranceDashboard = ({ account, consentContract, auditLogContract, access
             setIsRegisteringId(true);
             const generatedId = generateLocalShortID(normalizedAccount);
             toast.info(`Registering Corporate ID: ${generatedId}...`);
-            
+
             const tx = await walletMapperContract.registerShortID(generatedId, { gasLimit: 800000 });
             await tx.wait();
 
@@ -311,14 +311,14 @@ const InsuranceDashboard = ({ account, consentContract, auditLogContract, access
 
     const handleDisburseClaim = async (claim) => {
         if (!account || !claim) return;
-        
+
         try {
             setLoading(true);
             toast.info(`Resolving patient wallet for ${claim.patient}...`);
-            
+
             // 1. Resolve Wallet Address (Handle both raw addresses and Short IDs)
             const patientWallet = await resolveWalletAddress(claim.patient, walletMapperContract);
-            
+
             // 2. Execute HBAR Transfer (Claim Amount)
             // Note: For demo purposes, we treat INR as tiny bars or just a multiplier
             // User requested "reflected in patient wallet"
@@ -328,20 +328,20 @@ const InsuranceDashboard = ({ account, consentContract, auditLogContract, access
             // Allow Insurer to edit amount
             const finalAmount = window.prompt(`Verify disbursement amount (INR) for ${claim.id}:`, claim.amount);
             if (finalAmount === null) return; // User cancelled
-            
+
             // Let's send a small amount of HBAR proportional to the claim (e.g. 1 HBAR per 1000 INR for demo)
             const hbarAmount = (Number(finalAmount) / 1000).toFixed(4);
-            
+
             toast.info(`Disbursing ${hbarAmount} HBAR to ${patientWallet.slice(0, 10)}... (Final: ₹${finalAmount})`);
-            
+
             const tx = await signer.sendTransaction({
                 to: patientWallet,
                 value: ethers.parseEther(hbarAmount.toString()),
                 gasLimit: 100000
             });
-            
+
             await tx.wait();
-            
+
             // 3. Log Disbursement to Audit Ledger for transparency
             try {
                 const auditWithSigner = auditLogContract.connect(signer);
@@ -357,9 +357,9 @@ const InsuranceDashboard = ({ account, consentContract, auditLogContract, access
             } catch (logErr) {
                 console.warn("Disbursement logged only to transaction history, audit ledger failed", logErr);
             }
-            
+
             // 4. Update Status
-            const updated = claims.map(c => 
+            const updated = claims.map(c =>
                 c.id === claim.id ? { ...c, status: 'Approved' } : c
             );
             setClaims(updated);
@@ -378,13 +378,13 @@ const InsuranceDashboard = ({ account, consentContract, auditLogContract, access
         const updated = [...verifiedClaimIds, claimId];
         setVerifiedClaimIds(updated);
         localStorage.setItem(`insurance_verified_${account}`, JSON.stringify(updated));
-        
+
         // Find the request in allRequests to create a formal claim if it has evidence
         const request = allRequests.find(r => r.id === claimId);
         if (request && request.purpose.includes('| Evidence:')) {
             const hasEvidence = request.purpose.includes('| Evidence:');
             const evidenceCIDs = hasEvidence ? request.purpose.split('| Evidence: ')[1].split(', ') : [];
-            
+
             const newClaim = {
                 id: `CLM-${claimId}`,
                 patient: request.patient,
@@ -412,7 +412,7 @@ const InsuranceDashboard = ({ account, consentContract, auditLogContract, access
                 // Convert Base64 (data URI) to Blob
                 const base64Data = evidence.data.split(',')[1];
                 const contentType = evidence.type;
-                
+
                 const byteCharacters = atob(base64Data);
                 const byteNumbers = new Array(byteCharacters.length);
                 for (let i = 0; i < byteCharacters.length; i++) {
@@ -421,7 +421,7 @@ const InsuranceDashboard = ({ account, consentContract, auditLogContract, access
                 const byteArray = new Uint8Array(byteNumbers);
                 const blob = new Blob([byteArray], { type: contentType });
                 const url = URL.createObjectURL(blob);
-                
+
                 const win = window.open(url, '_blank');
                 if (!win) toast.error("Pop-up blocked. Please allow pop-ups for this site.");
             } else {
@@ -588,30 +588,30 @@ const InsuranceDashboard = ({ account, consentContract, auditLogContract, access
                                                 <tr key={r?.id || Math.random()}>
                                                     <td style={{ fontFamily: 'monospace', fontSize: '0.85rem' }}>{r?.patient?.slice(0, 16) || 'N/A'}...</td>
                                                     <td style={{ fontSize: '0.9rem' }}>
-                                                         <div style={{ fontWeight: '600', color: 'var(--medical-primary)' }}>
-                                                             {r.purpose.split(' | ')[0]}
-                                                         </div>
-                                                         {r.amount && (
-                                                             <div style={{ fontSize: '0.85rem', color: 'var(--status-approved)', fontWeight: 'bold', marginTop: '4px' }}>
-                                                                 💰 Requested: ₹{r.amount}
-                                                             </div>
-                                                         )}
-                                                         {hasEvidence && (
-                                                             <div style={{ marginTop: '0.5rem', display: 'flex', gap: '0.3rem', flexWrap: 'wrap' }}>
-                                                                 {evidenceCIDs.map((cid, ci) => (
-                                                                     <button key={ci} onClick={() => handleViewEvidence(cid.trim())} className="status-badge" style={{ fontSize: '0.65rem', background: 'var(--grad-teal)', color: 'white', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px' }}>
-                                                                         📄 View PDF {ci+1}
-                                                                     </button>
-                                                                 ))}
-                                                             </div>
-                                                         )}
-                                                     </td>
-                                                     <td style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>{r.time}</td>
-                                                     <td><span className="status-badge success">{r.status}</span></td>
+                                                        <div style={{ fontWeight: '600', color: 'var(--medical-primary)' }}>
+                                                            {r.purpose.split(' | ')[0]}
+                                                        </div>
+                                                        {r.amount && (
+                                                            <div style={{ fontSize: '0.85rem', color: 'var(--status-approved)', fontWeight: 'bold', marginTop: '4px' }}>
+                                                                💰 Requested: ₹{r.amount}
+                                                            </div>
+                                                        )}
+                                                        {hasEvidence && (
+                                                            <div style={{ marginTop: '0.5rem', display: 'flex', gap: '0.3rem', flexWrap: 'wrap' }}>
+                                                                {evidenceCIDs.map((cid, ci) => (
+                                                                    <button key={ci} onClick={() => handleViewEvidence(cid.trim())} className="status-badge" style={{ fontSize: '0.65rem', background: 'var(--grad-teal)', color: 'white', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                                                        📄 View PDF {ci + 1}
+                                                                    </button>
+                                                                ))}
+                                                            </div>
+                                                        )}
+                                                    </td>
+                                                    <td style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>{r.time}</td>
+                                                    <td><span className="status-badge success">{r.status}</span></td>
                                                     <td>
                                                         {hasEvidence && !isVerified && (
-                                                            <button 
-                                                                className="primary-btn" 
+                                                            <button
+                                                                className="primary-btn"
                                                                 style={{ padding: '0.3rem 0.6rem', fontSize: '0.7rem' }}
                                                                 onClick={() => handleVerifyClaim(r.id.toString())}
                                                             >
@@ -649,18 +649,18 @@ const InsuranceDashboard = ({ account, consentContract, auditLogContract, access
                                                 <div>
                                                     <h4 style={{ margin: 0 }}>IPFS Record: {r.cid.slice(0, 8)}...</h4>
                                                     <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>Patient: {r.patient.slice(0, 12)}...</span>
-                                                 </div>
-                                                 {(() => {
-                                                     const claim = claims.find(c => c.cid === r.cid);
-                                                     const status = claim ? claim.status : (r.purpose.toLowerCase().includes('claim filing') ? 'Waiting for Disburse' : 'Consent Approved');
-                                                     const isFinal = status === 'Approved';
-                                                     return (
-                                                         <span className={`status-badge ${isFinal ? 'active' : 'pending'}`}>
-                                                             {status}
-                                                         </span>
-                                                     );
-                                                 })()}
-                                             </div>
+                                                </div>
+                                                {(() => {
+                                                    const claim = claims.find(c => c.cid === r.cid);
+                                                    const status = claim ? claim.status : (r.purpose.toLowerCase().includes('claim filing') ? 'Waiting for Disburse' : 'Consent Approved');
+                                                    const isFinal = status === 'Approved';
+                                                    return (
+                                                        <span className={`status-badge ${isFinal ? 'active' : 'pending'}`}>
+                                                            {status}
+                                                        </span>
+                                                    );
+                                                })()}
+                                            </div>
                                             <div style={{ fontSize: '0.9rem', color: 'var(--text-main)', background: '#F8FAFC', padding: '10px', borderRadius: '8px', marginBottom: '1rem' }}>
                                                 <strong>Approved Purpose:</strong><br />
                                                 <span style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>
@@ -673,13 +673,13 @@ const InsuranceDashboard = ({ account, consentContract, auditLogContract, access
                                                     <strong style={{ fontSize: '0.8rem', color: 'var(--medical-aqua)' }}>Hospital Submitted Evidence:</strong>
                                                     <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem', marginTop: '5px' }}>
                                                         {r.purpose.split(' | Evidence: ')[1].split(', ').map((cid, cIdx) => (
-                                                            <button 
+                                                            <button
                                                                 key={cIdx}
                                                                 onClick={() => handleViewEvidence(cid.trim())}
-                                                                style={{ 
-                                                                    fontSize: '0.7rem', 
-                                                                    padding: '2px 8px', 
-                                                                    borderRadius: '4px', 
+                                                                style={{
+                                                                    fontSize: '0.7rem',
+                                                                    padding: '2px 8px',
+                                                                    borderRadius: '4px',
                                                                     border: '1px solid var(--medical-aqua)',
                                                                     background: 'white',
                                                                     color: 'var(--medical-aqua)',
@@ -692,7 +692,7 @@ const InsuranceDashboard = ({ account, consentContract, auditLogContract, access
                                                     </div>
                                                 </div>
                                             )}
-                                            
+
                                             {r.billAmount && Number(r.billAmount) > 0 && (
                                                 <div style={{ padding: '0.8rem', background: 'var(--grad-teal)', borderRadius: '12px', color: 'white', marginBottom: '1rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                                                     <span style={{ fontSize: '0.8rem', fontWeight: 'bold' }}>BILL AMOUNT</span>
@@ -709,16 +709,16 @@ const InsuranceDashboard = ({ account, consentContract, auditLogContract, access
                                                     onClick={async () => {
                                                         try {
                                                             setLoading(true);
-                                                            
+
                                                             // STEP 1: LOG ACCESS ON-CHAIN (Transaction First)
                                                             if (auditLogContract) {
                                                                 toast.info("Signing compliance log on Hedera...");
                                                                 const nowSecs = Math.floor(Date.now() / 1000);
                                                                 const tx = await auditLogContract.logDataAccessed(
-                                                                    r.patient, 
-                                                                    account, 
-                                                                    `Insurance Review of CID ${r.cid.slice(0, 8)}`, 
-                                                                    nowSecs, 
+                                                                    r.patient,
+                                                                    account,
+                                                                    `Insurance Review of CID ${r.cid.slice(0, 8)}`,
+                                                                    nowSecs,
                                                                     { gasLimit: 1000000 }
                                                                 );
                                                                 await tx.wait();
@@ -748,11 +748,11 @@ const InsuranceDashboard = ({ account, consentContract, auditLogContract, access
                                                     onClick={() => {
                                                         setSelectedRecordForClaim(r);
                                                         setClaimData({
-                                                          patientWallet: r.patient,
-                                                          policyNumber: '',
-                                                          amount: r.billAmount ? r.billAmount.toString() : '',
-                                                          diagnosis: r.purpose || '',
-                                                          hospital: account
+                                                            patientWallet: r.patient,
+                                                            policyNumber: '',
+                                                            amount: r.billAmount ? r.billAmount.toString() : '',
+                                                            diagnosis: r.purpose || '',
+                                                            hospital: account
                                                         });
                                                         setShowClaimModal(true);
                                                     }}
@@ -810,41 +810,41 @@ const InsuranceDashboard = ({ account, consentContract, auditLogContract, access
                                                 <td>#{c.id}</td>
                                                 <td style={{ fontFamily: 'monospace' }}>{c.patient.slice(0, 16)}...</td>
                                                 <td style={{ fontFamily: 'monospace', fontSize: '0.8rem' }}>{c.cid.slice(0, 16)}...</td>
-                                                 <td>
-                                                     <span className={`status-badge ${c.status === 'Approved' ? 'success' : 'pending'}`}>
-                                                         {c.status}
-                                                     </span>
-                                                     {verifiedClaimIds.includes(c.id) || c.verified ? (
-                                                         <div style={{ fontSize: '0.65rem', color: 'var(--status-approved)', marginTop: '2px', fontWeight: 'bold' }}>✓ Documents Verified</div>
-                                                     ) : (
-                                                         <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)', marginTop: '2px' }}>⚠ Verification Pending</div>
-                                                     )}
-                                                 </td>
-                                                 <td style={{ fontWeight: 'bold' }}>₹ {c.amount}</td>
-                                                 <td>
-                                                     {c.status !== 'Approved' && (
-                                                         <>
-                                                             {!(verifiedClaimIds.includes(c.id) || c.verified) ? (
-                                                                 <button 
-                                                                     className="secondary-btn" 
-                                                                     style={{ padding: '0.3rem 0.6rem', fontSize: '0.7rem', borderColor: 'var(--medical-primary)' }}
-                                                                     onClick={() => handleVerifyClaim(c.id)}
-                                                                 >
-                                                                     Verify Docs
-                                                                 </button>
-                                                             ) : (
-                                                                 <button 
-                                                                     className="primary-btn" 
-                                                                     style={{ padding: '0.3rem 0.6rem', fontSize: '0.7rem', background: 'var(--grad-teal)' }}
-                                                                     onClick={() => handleDisburseClaim(c)}
-                                                                     disabled={loading}
-                                                                 >
-                                                                     {loading ? "..." : "Disburse Funds"}
-                                                                 </button>
-                                                             )}
-                                                         </>
-                                                     )}
-                                                 </td>
+                                                <td>
+                                                    <span className={`status-badge ${c.status === 'Approved' ? 'success' : 'pending'}`}>
+                                                        {c.status}
+                                                    </span>
+                                                    {verifiedClaimIds.includes(c.id) || c.verified ? (
+                                                        <div style={{ fontSize: '0.65rem', color: 'var(--status-approved)', marginTop: '2px', fontWeight: 'bold' }}>✓ Documents Verified</div>
+                                                    ) : (
+                                                        <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)', marginTop: '2px' }}>⚠ Verification Pending</div>
+                                                    )}
+                                                </td>
+                                                <td style={{ fontWeight: 'bold' }}>₹ {c.amount}</td>
+                                                <td>
+                                                    {c.status !== 'Approved' && (
+                                                        <>
+                                                            {!(verifiedClaimIds.includes(c.id) || c.verified) ? (
+                                                                <button
+                                                                    className="secondary-btn"
+                                                                    style={{ padding: '0.3rem 0.6rem', fontSize: '0.7rem', borderColor: 'var(--medical-primary)' }}
+                                                                    onClick={() => handleVerifyClaim(c.id)}
+                                                                >
+                                                                    Verify Docs
+                                                                </button>
+                                                            ) : (
+                                                                <button
+                                                                    className="primary-btn"
+                                                                    style={{ padding: '0.3rem 0.6rem', fontSize: '0.7rem', background: 'var(--grad-teal)' }}
+                                                                    onClick={() => handleDisburseClaim(c)}
+                                                                    disabled={loading}
+                                                                >
+                                                                    {loading ? "..." : "Disburse Funds"}
+                                                                </button>
+                                                            )}
+                                                        </>
+                                                    )}
+                                                </td>
                                             </tr>
                                         ))
                                     )}
@@ -908,8 +908,8 @@ const InsuranceDashboard = ({ account, consentContract, auditLogContract, access
                             <span className="status-badge active" style={{ fontSize: '0.8rem' }}>{shortId}</span>
                         </div>
                     ) : (
-                        <button 
-                            className="secondary-btn" 
+                        <button
+                            className="secondary-btn"
                             style={{ marginTop: '0.5rem', fontSize: '0.75rem', padding: '0.3rem 0.8rem', borderColor: 'var(--medical-primary)' }}
                             onClick={handleRegisterShortID}
                             disabled={isRegisteringId}

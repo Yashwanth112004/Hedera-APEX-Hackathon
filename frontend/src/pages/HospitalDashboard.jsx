@@ -321,18 +321,18 @@ const HospitalDashboard = ({
             🏢 Request Insurance
           </button>
 
-            <button className="secondary-btn" onClick={() => {
-              setReqWallet(account);
-              setShowOrgRegForm(true);
-            }} style={{ marginLeft: 'auto' }}>
-              Staff Registration
-            </button>
+          <button className="secondary-btn" onClick={() => {
+            setReqWallet(account);
+            setShowOrgRegForm(true);
+          }} style={{ marginLeft: 'auto' }}>
+            Staff Registration
+          </button>
         </div>
       </div>
 
       <div className="dashboard-grid">
         {dashboardCards.map((card, index) => (
-          <div key={index} className="dashboard-card floating-card" style={{ 
+          <div key={index} className="dashboard-card floating-card" style={{
             borderTop: `4px solid ${card.color}`,
             padding: '2rem',
             display: 'flex',
@@ -341,8 +341,8 @@ const HospitalDashboard = ({
             maxWidth: '450px',
             background: 'linear-gradient(to bottom right, #ffffff, #f8faff)'
           }}>
-            <div className="card-icon" style={{ 
-              backgroundColor: `${card.color}15`, 
+            <div className="card-icon" style={{
+              backgroundColor: `${card.color}15`,
               color: card.color,
               width: '64px',
               height: '64px',
@@ -633,12 +633,12 @@ const HospitalDashboard = ({
               </div>
               <div className="form-group">
                 <label>Billing Amount (HBAR) / Claimable Fee</label>
-                <input 
-                  type="number" 
-                  className="glass-input" 
-                  value={uploadData.billAmount} 
-                  onChange={e => setUploadData({ ...uploadData, billAmount: e.target.value })} 
-                  placeholder="e.g. 2500" 
+                <input
+                  type="number"
+                  className="glass-input"
+                  value={uploadData.billAmount}
+                  onChange={e => setUploadData({ ...uploadData, billAmount: e.target.value })}
+                  placeholder="e.g. 2500"
                 />
               </div>
               <div className="modal-actions">
@@ -678,13 +678,13 @@ const HospitalDashboard = ({
 
               try {
                 setLoading(true);
-                
+
                 let evidenceString = "";
                 if (claimFiles.length > 0) {
                   toast.info(`Encoding ${claimFiles.length} files to Local Vault...`);
                   const evdIds = [];
                   const vault = JSON.parse(localStorage.getItem('hedera_evidence_vault') || '{}');
-                  
+
                   for (const file of claimFiles) {
                     const base64 = await fileToBase64(file);
                     const evdId = `EVD-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
@@ -695,7 +695,7 @@ const HospitalDashboard = ({
                     };
                     evdIds.push(evdId);
                   }
-                  
+
                   localStorage.setItem('hedera_evidence_vault', JSON.stringify(vault));
                   evidenceString = " | Evidence: " + evdIds.join(", ");
                 }
@@ -747,10 +747,10 @@ const HospitalDashboard = ({
               </div>
               <div className="form-group">
                 <label>Related Evidence Files (Bills, Reports)</label>
-                <input 
-                  type="file" 
-                  multiple 
-                  className="glass-input" 
+                <input
+                  type="file"
+                  multiple
+                  className="glass-input"
                   onChange={(e) => setClaimFiles(Array.from(e.target.files))}
                   style={{ paddingTop: '10px' }}
                 />
