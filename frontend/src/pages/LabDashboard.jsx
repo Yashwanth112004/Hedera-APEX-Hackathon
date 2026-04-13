@@ -110,7 +110,7 @@ const LabDashboard = ({
     const loadHistory = async () => {
       if (!auditLogContract || !account) return;
       try {
-        const hapi = hapiProvider || new ethers.BrowserProvider(window.ethereum);
+        const hapi = new ethers.JsonRpcProvider("https://testnet.hashio.io/api");
         const readAudit = auditLogContract.connect(hapi);
         let logs = [];
         try {

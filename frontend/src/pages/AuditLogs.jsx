@@ -11,7 +11,8 @@ const AuditLogs = ({ auditLogContract, account, role, hapiProvider }) => {
     if (!auditLogContract) return;
     try {
       setLoading(true);
-      const readContract = hapiProvider ? auditLogContract.connect(hapiProvider) : auditLogContract;
+      const testnetProvider = new ethers.JsonRpcProvider("https://testnet.hashio.io/api");
+      const readContract = auditLogContract.connect(testnetProvider);
 
       let formattedLogs = [];
       try {

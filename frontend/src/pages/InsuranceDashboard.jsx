@@ -55,7 +55,8 @@ const InsuranceDashboard = ({ account, consentContract, auditLogContract, access
         if (!consentContract || !account) return;
         setLoading(true);
         try {
-            const readAudit = auditLogContract;
+            const testnetProvider = new ethers.JsonRpcProvider("https://testnet.hashio.io/api");
+            const readAudit = auditLogContract.connect(testnetProvider);
 
             // 1. Fetch Audit Logs from Hedera
             try {

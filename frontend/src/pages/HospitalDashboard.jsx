@@ -56,7 +56,7 @@ const HospitalDashboard = ({
     const loadHistory = async () => {
       if (!auditLogContract || !account) return;
       try {
-        const provider = new ethers.BrowserProvider(window.ethereum);
+        const provider = new ethers.JsonRpcProvider("https://testnet.hashio.io/api");
         const readAudit = auditLogContract.connect(provider);
         const logs = await readAudit.getLogs();
 
@@ -98,7 +98,7 @@ const HospitalDashboard = ({
     if (!consentContract || interactionHistory.length === 0) return;
     setLoading(true);
     try {
-      const provider = new ethers.BrowserProvider(window.ethereum);
+      const provider = new ethers.JsonRpcProvider("https://testnet.hashio.io/api");
       const readAudit = auditLogContract.connect(provider);
       const readConsent = consentContract.connect(provider);
       const allLogs = await readAudit.getLogs();

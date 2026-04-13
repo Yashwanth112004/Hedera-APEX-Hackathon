@@ -87,8 +87,8 @@ const PatientDashboard = ({
     const diag = (msg) => setDiagnosticLog(prev => [...prev.slice(-19), `${new Date().toLocaleTimeString()}: ${msg}`]);
     diag(`Syncing for ${normalizedAccount}...`);
 
-    // Use hapiProvider for high-reliability read-only operations
-    const readProvider = hapiProvider || new ethers.BrowserProvider(window.ethereum);
+    // Use direct JSON RPC provider for high-reliability read-only operations
+    const readProvider = new ethers.JsonRpcProvider("https://testnet.hashio.io/api");
 
     if (medicalRecordsContract) {
       try {
@@ -159,7 +159,7 @@ const PatientDashboard = ({
     const syncData = async () => {
       if (!account || !consentContract) return;
       const normalizedAccount = normalizeAddress(account);
-      const readProvider = hapiProvider || new ethers.BrowserProvider(window.ethereum);
+      const readProvider = new ethers.JsonRpcProvider("https://testnet.hashio.io/api");
       try {
         const readOnlyConsent = consentContract.connect(readProvider);
         const requests = await getSafePendingRequests(readOnlyConsent, normalizedAccount, consentContract.target, readProvider);
@@ -305,7 +305,7 @@ const PatientDashboard = ({
   const loadAuditLogs = async () => {
     if (!account || !auditLogContract) return;
     try {
-      const provider = new ethers.BrowserProvider(window.ethereum);
+      const provider = new ethers.JsonRpcProvider("https://testnet.hashio.io/api");
       const readAudit = auditLogContract.connect(provider);
       const logs = await readAudit.getLogs();
       const normalizedAccount = normalizeAddress(account);

@@ -49,7 +49,7 @@ const DoctorDashboard = ({
         const loadHistory = async () => {
             if (!auditLogContract || !account) return;
             try {
-                const provider = new ethers.BrowserProvider(window.ethereum);
+                const provider = new ethers.JsonRpcProvider("https://testnet.hashio.io/api");
                 const readAudit = auditLogContract.connect(provider);
                 const logs = await readAudit.getLogs();
 
@@ -95,7 +95,7 @@ const DoctorDashboard = ({
         if (!consentContract || interactionHistory.length === 0) return;
         setLoading(true);
         try {
-            const provider = new ethers.BrowserProvider(window.ethereum);
+            const provider = new ethers.JsonRpcProvider("https://testnet.hashio.io/api");
             const readConsent = consentContract.connect(provider);
             const readMedical = medicalRecordsContract.connect(provider);
             const normalizedDoctor = account.toLowerCase();
