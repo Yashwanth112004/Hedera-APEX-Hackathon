@@ -8,7 +8,7 @@ module.exports = {
 
     hedera_testnet: {
       url: "https://testnet.hashio.io/api",
-      accounts: [process.env.PRIVATE_KEY],
+      accounts: process.env.PRIVATE_KEY ? [process.env.PRIVATE_KEY] : [],
       chainId: 296
     }
 

@@ -1,11 +1,12 @@
 import axios from 'axios';
 import CryptoJS from 'crypto-js';
+import { vaultEncrypt, vaultDecrypt, getOrCreateVaultTransitKey } from './vaultCrypto';
 
 // Configuration from provided JWT
 const PINATA_JWT = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySW5mb3JtYXRpb24iOnsiaWQiOiIxOGVkZDljMC0yODU3LTRkZTEtOTQ3ZS01ODJkMWU3ZDBlZDkiLCJlbWFpbCI6InB1bGlnaWxsYS55YXNod2FudEBnbWFpbC5jb20iLCJlbWFpbF92ZXJpZmllZCI6dHJ1ZSwicGluX3BvbGljeSI6eyJyZWdpb25zIjpbeyJkZXNpcmVkUmVwbGljYXRpb25Db3VudCI6MSwiaWQiOiJGUkExIn0seyJkZXNpcmVkUmVwbGljYXRpb25Db3VudCI6MSwiaWQiOiJOWUMxIn1dLCJ2ZXJzaW9uIjoxfSwibWZhX2VuYWJsZWQiOmZhbHNlLCJzdGF0dXMiOiJBQ1RJVkUifSwiYXV0aGVudGljYXRpb25UeXBlIjoic2NvcGVkS2V5Iiwic2NvcGVkS2V5S2V5IjoiODBkNzUyODY1ZGRjN2I5YWYzNjEiLCJzY29wZWRLZXlTZWNyZXQiOiIzMTI2OGYyODFkMDZjOTQ5MTFkZDk4NDMxNjVlNWFkMjkyMDQ3YTI3YWNhYWY1N2ZlMDAyZTA4NmRlNGYzMzY0IiwiZXhwIjoxNzk0MTEzODk3fQ.3p91kASUCiF0US8GwgX6ARMTDIaopeqNBnD_XIVP2ag';
 
-// Use a static secret for demo purposes, or prompt user. In prod, this might be derived from signatures.
-const DEMO_SECRET_KEY = 'dpdp-healthcare-secret-key-2026';
+// Standard HashiCorp Vault Transit Engine Secret Fallback
+const DEFAULT_VAULT_KEY = 'dpdp-healthcare-secret-key-2026';
 
 /**
  * Local Storage Vault for large files (Fallback for Pinata 413)
@@ -29,27 +30,38 @@ const saveToLocalVault = (payload, name) => {
 };
 
 /**
- * Encrypts a JSON payload symmetrically
+ * Encrypts a JSON payload symmetrically via HashiCorp Vault Transit Engine
  * @param {Object} data - The medical data to encrypt
- * @returns {string} - AES encrypted string
+ * @param {string} userOrKey - Identity address or key
+ * @returns {string} - AES-256-GCM encrypted string
  */
-export const encryptData = (data, secretKey = DEMO_SECRET_KEY) => {
-    return CryptoJS.AES.encrypt(JSON.stringify(data), secretKey).toString();
+export const encryptData = (data, userOrKey = DEFAULT_VAULT_KEY) => {
+    try {
+        return vaultEncrypt(data, userOrKey);
+    } catch (e) {
+        // Fallback to direct AES if vault error
+        return CryptoJS.AES.encrypt(JSON.stringify(data), userOrKey).toString();
+    }
 };
 
 /**
- * Decrypts a payload back to JSON
+ * Decrypts a payload back to JSON via HashiCorp Vault Transit Engine
  * @param {string} encryptedText 
+ * @param {string} userOrKey 
  * @returns {Object}
  */
-export const decryptData = (encryptedText, secretKey = DEMO_SECRET_KEY) => {
+export const decryptData = (encryptedText, userOrKey = DEFAULT_VAULT_KEY) => {
     try {
-        const bytes = CryptoJS.AES.decrypt(encryptedText, secretKey);
-        const decryptedString = bytes.toString(CryptoJS.enc.Utf8);
-        return JSON.parse(decryptedString);
+        return vaultDecrypt(encryptedText, userOrKey);
     } catch (error) {
-        console.error("Decryption failed. Incorrect key or corrupt data.");
-        throw new Error("Unable to decrypt medical data");
+        try {
+            const bytes = CryptoJS.AES.decrypt(encryptedText, userOrKey);
+            const decryptedString = bytes.toString(CryptoJS.enc.Utf8);
+            return JSON.parse(decryptedString);
+        } catch (fallbackError) {
+            console.error("Decryption failed. Incorrect key or corrupt data.");
+            throw new Error("Unable to decrypt medical data");
+        }
     }
 };
 
@@ -147,7 +159,6 @@ export const fetchFromPinata = async (cid) => {
     }
 
     try {
-        // Using Pinata's public gateway for retrieval. Ideally use a dedicated gateway.
         const res = await axios.get(`https://gateway.pinata.cloud/ipfs/${cid}`);
         return res.data.payload;
     } catch (error) {

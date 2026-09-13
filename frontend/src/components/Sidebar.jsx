@@ -3,41 +3,48 @@ import React from 'react';
 const Sidebar = ({ role, activeTab, onTabChange }) => {
   const patientMenu = [
     { id: 'dashboard', label: 'Dashboard', icon: '📊' },
+    { id: 'verification', label: 'HCS Integrity Verify', icon: '🔐' },
     { id: 'audit', label: 'Audit Logs', icon: '🔍' },
     { id: 'compliance', label: 'Legal & DPDP', icon: '⚖️' },
   ];
 
   const hospitalMenu = [
     { id: 'dashboard', label: 'Dashboard', icon: '🏥' },
+    { id: 'verification', label: 'HCS Integrity Verify', icon: '🔐' },
     { id: 'internal-audit', label: 'Access Logs', icon: '🔍' },
     { id: 'compliance', label: 'DPDP Help', icon: '⚖️' },
   ];
 
   const doctorMenu = [
     { id: 'dashboard', label: 'Physician Portal', icon: '🩺' },
+    { id: 'verification', label: 'HCS Integrity Verify', icon: '🔐' },
     { id: 'internal-audit', label: 'Verified Logs', icon: '🔍' },
     { id: 'compliance', label: 'DPDP Help', icon: '⚖️' },
   ];
 
   const pharmacyMenu = [
     { id: 'dashboard', label: 'Pharmacy Desk', icon: '💊' },
+    { id: 'verification', label: 'HCS Integrity Verify', icon: '🔐' },
     { id: 'internal-audit', label: 'Dispense Logs', icon: '🔍' },
     { id: 'compliance', label: 'DPDP Help', icon: '⚖️' },
   ];
 
   const insuranceMenu = [
     { id: 'dashboard', label: 'Claims Desk', icon: '🏢' },
+    { id: 'verification', label: 'HCS Integrity Verify', icon: '🔐' },
     { id: 'internal-audit', label: 'Payout Logs', icon: '🔍' },
   ];
 
   const labMenu = [
     { id: 'dashboard', label: 'Lab Reports', icon: '🧪' },
+    { id: 'verification', label: 'HCS Integrity Verify', icon: '🔐' },
     { id: 'internal-audit', label: 'Query Logs', icon: '🔍' },
     { id: 'compliance', label: 'DPDP Help', icon: '⚖️' },
   ];
 
   const adminMenu = [
     { id: 'dashboard', label: 'Management', icon: '🛡️' },
+    { id: 'verification', label: 'HCS Integrity Verify', icon: '🔐' },
     { id: 'audit', label: 'System Logs', icon: '🔍' },
   ];
 

@@ -1,0 +1,108 @@
+{
+  "datasetMetadata": {
+    "title": "OjasRaksha Synthetic Clinical & Cryptographic Test Dataset",
+    "standard": "HL7 FHIR R4 / WHO ICD-10-CM / DPDP Act 2023",
+    "hcsTopicId": "0.0.4891024",
+    "recordsCount": 10,
+    "generatedAt": "2026-09-13T13:05:00.000Z"
+  },
+  "patients": [
+    {
+      "patientId": "PAT-849201",
+      "walletAddress": "0xF9B6F4B147678c1DD0C4B789dB4D15Ec49d0539D",
+      "shortId": "849201",
+      "fhirResource": {
+        "resourceType": "Patient",
+        "id": "PAT-849201",
+        "gender": "male",
+        "birthDate": "1984-06-15",
+        "telecom": [{ "system": "phone", "value": "+91-9876543210" }]
+      },
+      "clinicalRecords": [
+        {
+          "recordId": "REC-001",
+          "type": "Prescription",
+          "icd10": {
+            "code": "I10",
+            "title": "Essential (primary) hypertension",
+            "chapter": "Chapter 9 (I00-I99)",
+            "billable": true
+          },
+          "medications": [
+            { "name": "Amlodipine", "dosage": "5mg", "frequency": "Once daily" },
+            { "name": "Telmisartan", "dosage": "40mg", "frequency": "Once daily morning" }
+          ],
+          "prescribedBy": "Dr. Sarah Jenkins (Cardiology)",
+          "doctorWallet": "0x04Fee3FD1B338d12FFD6dBD8d66dE1e8e0BB99cB",
+          "vaultEncryption": {
+            "algorithm": "AES-256-GCM",
+            "transitKey": "vault-transit-key-0xF9B6F4B147678c1DD0C4B789dB4D15Ec49d0539D",
+            "mpcThreshold": "2-of-3"
+          },
+          "ipfsCID": "QmXoypizjW3WknFiJnKLwHCnL72vedxjQkDDP1mXWo6uco",
+          "hcsReceipt": {
+            "topicId": "0.0.4891024",
+            "sequenceNumber": 1041,
+            "runningHash": "0x7e8f52a1b94c3d82e140d39e7c5b961208fb6f59b34a179c6d3e813f57291a84",
+            "consensusTimestamp": "2026-09-13T07:18:22.450Z"
+          }
+        },
+        {
+          "recordId": "REC-002",
+          "type": "DiagnosticLabReport",
+          "icd10": {
+            "code": "E11.9",
+            "title": "Type 2 diabetes mellitus without complications",
+            "chapter": "Chapter 4 (E00-E89)",
+            "billable": true
+          },
+          "labTests": [
+            { "testName": "HbA1c", "result": "6.8%", "unit": "%", "referenceRange": "< 5.7% Normal, 5.7-6.4% Prediabetes, >= 6.5% Diabetes" },
+            { "testName": "Fasting Blood Glucose", "result": "128", "unit": "mg/dL", "referenceRange": "70-99 mg/dL" },
+            { "testName": "Lipid Profile (Total Cholesterol)", "result": "195", "unit": "mg/dL", "referenceRange": "< 200 mg/dL" }
+          ],
+          "labFacility": "Apex Diagnostic Labs",
+          "ipfsCID": "QmZtmD2qt8fJpq3CLDHvdzsAAsDHBr37Dep2Jy96XAZpkE",
+          "hcsReceipt": {
+            "topicId": "0.0.4891024",
+            "sequenceNumber": 1042,
+            "runningHash": "0x99a8b7c6d5e4f3a2b1c0d9e8f7a6b5c4d3e2f1a0b9c8d7e6f5a4b3c2d1e0f9a8",
+            "consensusTimestamp": "2026-09-13T07:18:25.120Z"
+          }
+        }
+      ]
+    },
+    {
+      "patientId": "PAT-931042",
+      "walletAddress": "0x70997970C51812dc3A010C7d01b50e0d17dc79C8",
+      "shortId": "931042",
+      "fhirResource": {
+        "resourceType": "Patient",
+        "id": "PAT-931042",
+        "gender": "female",
+        "birthDate": "1992-11-04"
+      },
+      "clinicalRecords": [
+        {
+          "recordId": "REC-003",
+          "type": "EmergencyBreakGlassAccess",
+          "icd10": {
+            "code": "R07.9",
+            "title": "Chest pain, unspecified",
+            "chapter": "Chapter 18 (R00-R99)",
+            "billable": true
+          },
+          "emergencyClinician": "0x04Fee3FD1B338d12FFD6dBD8d66dE1e8e0BB99cB",
+          "ephemeralKeyDurationMinutes": 60,
+          "zkCommitmentProof": "0x3a4b5c6d7e8f90123456789abcdef0123456789abcdef0123456789abcdef012",
+          "hcsReceipt": {
+            "topicId": "0.0.4891024",
+            "sequenceNumber": 1043,
+            "runningHash": "0x4a5b6c7d8e9f0123456789abcdef0123456789abcdef0123456789abcdef0123",
+            "consensusTimestamp": "2026-09-13T07:18:29.880Z"
+          }
+        }
+      ]
+    }
+  ]
+}

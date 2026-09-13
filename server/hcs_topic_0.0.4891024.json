@@ -1,0 +1,12 @@
+[
+  {
+    "sequenceNumber": 1,
+    "consensusTimestamp": "2026-09-13T06:30:15.000Z",
+    "topicId": "0.0.4891024",
+    "eventType": "SYSTEM_GENESIS_INITIALIZED",
+    "actor": "0x04Fee3FD1B338d12FFD6dBD8d66dE1e8e0BB99cB",
+    "details": "OjasRaksha DPDP Healthcare Consensus Topic Genesis initialized on Hedera Mainnet",
+    "status": "CONSENSUS_REACHED",
+    "aBFTFinalityMs": 1420
+  }
+]

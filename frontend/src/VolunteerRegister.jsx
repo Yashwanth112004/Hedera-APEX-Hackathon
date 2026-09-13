@@ -6,7 +6,9 @@ import { QRCodeCanvas } from "qrcode.react";
 import { v4 as uuidv4 } from "uuid";
 import { toast } from 'react-toastify';
 
-const VOLUNTEER_REGISTRY = "0x79a758403F92c9E5597a4484d9d9bd2055Da8c55";
+import deployedConfig from "./utils/deployedContracts.json";
+
+const VOLUNTEER_REGISTRY = deployedConfig?.contracts?.VolunteerRegistry || "0xfCD889FBd4B3f2F08E094c3f51cE89C9498551B1";
 
 const ABI = [
   "function addVolunteer(bytes32,string)"

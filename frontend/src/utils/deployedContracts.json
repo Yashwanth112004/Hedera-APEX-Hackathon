@@ -1,0 +1,16 @@
+{
+  "network": "hedera_testnet",
+  "deployer": "0xeB91C8C20414d664CE91D95eC8cA7A9Bda5a614d",
+  "deployedAt": "2026-09-13T07:18:59.384Z",
+  "contracts": {
+    "AuditLog": "0x4504495D8B7F34a0f3e262c9Be6101c15B8bb06F",
+    "DataFiduciaryRegistry": "0x9579fA1Aa2A18d4B79b217D2c4d260b4434b553e",
+    "ConsentManager": "0xfce921d33267a0234F4feaB102b55306E1067E04",
+    "DataAccessManager": "0x94caa86Ce9c1F0c80d62043d3e26d70DEd83573B",
+    "MedicalRecords": "0x0d34189B0aa828410c36b9Fe7b1054e071134A77",
+    "HealthcareRBAC": "0xA0D7B649C3153Ef14873f618476fEaD9235030b3",
+    "RoleBasedAccess": "0xA0D7B649C3153Ef14873f618476fEaD9235030b3",
+    "WalletMapper": "0xbBc02d85660D99D7c91Ba91954781A090c4C95Af",
+    "VolunteerRegistry": "0xfCD889FBd4B3f2F08E094c3f51cE89C9498551B1"
+  }
+}

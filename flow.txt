@@ -1,0 +1,546 @@
+================================================================================
+          OJASRAKSHA DECENTRALIZED HEALTHCARE PLATFORM SYSTEM FLOWS
+================================================================================
+Architecture: 100% Decentralized (Zero Centralized Database)
+Ledger: Hedera Hashgraph (Smart Contracts & Hedera Consensus Service HCS)
+Key Management: HashiCorp Vault (Transit Secrets Engine) + Hedera MPC Key Vault
+                (Zero Cloud Vendor Lock-in, Replacing Legacy AWS KMS)
+Storage: Pinata IPFS (AES-256-GCM Symmetrically Encrypted Payloads)
+Standards: DPDP Act 2023 Compliant, ICD-10 Disease Codes, HL7 FHIR R4 Standard
+
+--------------------------------------------------------------------------------
+TABLE OF CONTENTS
+--------------------------------------------------------------------------------
+ 1. SYSTEM OVERVIEW & KEY MANAGEMENT ARCHITECTURE (HASHICORP VAULT + HEDERA MPC)
+ 2. END-TO-END PATIENT ONBOARDING FLOW
+ 3. ORGANIZATION & EMPLOYEE ONBOARDING & RBAC ROLE ASSIGNMENT FLOW
+ 4. IDENTITY, AUTHENTICATION & WALLET MAPPING FLOW
+ 5. ADMIN & GOVERNANCE FLOW (FIDUCIARY REGISTRY & ROLE RBAC)
+ 6. DOCTOR <-> PATIENT FLOW (CONSULTATION, CONSENT & EMR RECORDING)
+ 7. PATENTED ZK-HCS EPHEMERAL BREAK-GLASS EMERGENCY ACCESS FLOW
+ 8. DOCTOR -> PATIENT -> PHARMACY FLOW (PRESCRIPTION & MEDICATION DISPENSATION)
+ 9. DOCTOR <-> PATIENT <-> LAB FLOW (DIAGNOSTIC ORDERS & TEST REPORTS)
+10. PATIENT / HOSPITAL <-> INSURANCE FLOW (CLAIMS & REIMBURSEMENT)
+11. HOSPITAL / INSTITUTIONAL WORKFLOW (FACILITY OPERATIONS & FHIR EXPORTS)
+12. REGULATOR / AUDITOR FLOW (DPDP COMPLIANCE & HCS AUDIT LOGGING)
+13. BENEFICIARY & DEPENDENT FAMILY MANAGEMENT FLOW
+14. COMPLETE END-TO-END PATIENT HEALTHCARE JOURNEY (FULL LIFECYCLE SCENARIO)
+
+================================================================================
+1. SYSTEM OVERVIEW & KEY MANAGEMENT ARCHITECTURE (HASHICORP VAULT + HEDERA MPC)
+================================================================================
+
+OjasRaksha operates without any centralized database (PostgreSQL, MongoDB, MySQL) 
+or vendor-locked cloud KMS (such as AWS KMS). All medical payloads, prescriptions, 
+diagnostic reports, and claims are client-side AES-256-GCM encrypted before being 
+pinned to Pinata IPFS. Cryptographic IPFS Content Identifiers (CIDs), access state, 
+and audit logs are recorded immutably on Hedera Hashgraph Smart Contracts and 
+Hedera Consensus Service (HCS).
+
+Why AWS KMS Was Replaced:
+  - AWS KMS introduces cloud vendor lock-in and a centralized point of failure.
+  - Under India's DPDP Act 2023, data fiduciaries and principal patients must maintain 
+    sovereign cryptographic control over key lifecycle without third-party cloud exposure.
+  - AWS KMS pricing and centralized key escrow violate true Web3 zero-trust healthcare.
+
+HashiCorp Vault + Hedera MPC Key Management Architecture:
+  1. HashiCorp Vault (Transit Secrets Engine): Provides high-performance, self-hosted, 
+     HSM-compatible transit encryption, key rotation, and zero-trust key isolation. 
+     Vault handles envelope encryption enclaves without ever storing raw health records.
+  2. Hedera Threshold MPC Key Vault: Web3 multi-party computation splits signing keys 
+     across distributed nodes. Neither the application server, cloud provider, nor 
+     hospital holds a complete key share.
+  3. DPDP Key Shredding (Right to Erasure): When a patient revokes access or exercises 
+     DPDP Right to Erasure, the Vault transit key version is revoked/shredded. The 
+     IPFS payload remains encrypted forever with unrecoverable AES keys.
+
+Key Smart Contracts:
+  - DataFiduciaryRegistry.sol : Role governance & data fiduciary approvals
+  - MedicalRecords.sol        : EMR CID anchoring, prescriptions & bill amounts
+  - ConsentManager.sol        : Granular DPDP consent grants, scope & durations
+  - AuditLog.sol              : Immutably logged data access & consent events
+  - WalletMapper.sol          : Maps 42-char hex wallet addresses to 6-digit Short IDs
+  - RBAC.sol                  : Role-based permissions (Doctor, Pharmacy, Lab, etc.)
+
+Hedera HCS Topic ID: 0.0.4891024 (Real-time immutable audit mirror)
+
+
+================================================================================
+2. END-TO-END PATIENT ONBOARDING FLOW
+================================================================================
+
+Diagram:
++--------------------+     +------------------------+     +------------------------+
+| Patient Opens Web  | --> | Connect / Create Wallet| --> | DPDP Nonce Signature   |
+| (ojasraksha.health)|     | (MetaMask / Web3Auth)  |     | Challenge Verification |
++--------------------+     +------------------------+     +------------------------+
+                                                                  |
+                                                                  v
++--------------------+     +------------------------+     +------------------------+
+| Patient Dashboard  | <-- | Pinata IPFS Baseline   | <-- | WalletMapper.sol       |
+| (PatientDashboard) |     | Profile + Consent Pref |     | Generate 6-Digit ID    |
++--------------------+     +------------------------+     +------------------------+
+                                  ^
+                                  |
+                   +--------------------------------+
+                   | Historical EHR Record Upload   |
+                   | + Hedera Merkle Batching Algo  |
+                   +--------------------------------+
+
+Step-by-Step Flow:
+  1. WEBSITE ENTRY & LANDING:
+     - Patient opens the OjasRaksha platform portal.
+     - System displays a zero-trust, modern Web3 healthcare interface.
+  2. WALLET CONNECTION / CREATION:
+     - Patient clicks "Connect Wallet" (MetaMask, HashPack) or "Create Health Wallet" 
+       via Web3Auth Social Login (Google / Passkey / Email).
+     - Web3Auth uses Threshold Multi-Party Computation (MPC) to generate key shares 
+       without exposing private keys to central servers.
+  3. DPDP CRYPTOGRAPHIC CHALLENGE SIGNATURE:
+     - System generates a unique cryptographic nonce and timestamp challenge:
+       "Sign to authenticate identity & grant DPDP 2023 Consent Manager access"
+     - Patient signs challenge off-chain using their wallet private key.
+     - Server verifies EC signature off-chain; zero password storage needed.
+  4. SHORT ID RESOLUTION & ON-CHAIN REGISTRATION:
+     - App queries `WalletMapper.sol` with patient's 42-char EVM address (e.g. 0x7099...).
+     - If new patient, `WalletMapper.sol` executes `getOrCreateShortId()` to assign 
+       a clean 6-digit Short ID (e.g. 849201) mapped permanently to the wallet.
+  5. CLIENT-SIDE ENCRYPTION KEY SETUP (HASHICORP VAULT + DERIVATION):
+     - Patient browser derives a master symmetric encryption key using PBKDF2/Argon2 
+       from wallet signature seed.
+     - Registers public key enclave handle with HashiCorp Vault Transit Engine for 
+       secure transit envelope encryption.
+  6. BASELINE HEALTH PROFILE & HISTORICAL EHR RECORD INGESTION:
+     - Patient populates initial health profile (Blood Group, Allergies, Emergency Contacts).
+     - Patient uploads previous paper/digital health records (scanned PDFs, diagnostic reports, 
+       past discharge summaries, DICOM images).
+     - AI/ICD-10 Engine parses legacy documents, extracts diagnosis codes, and structures 
+       payload into HL7 FHIR R4 standard resources (`DocumentReference`, `Condition`).
+     - Files are client-side AES-256-GCM encrypted and pinned to Pinata IPFS.
+  7. HEDERA HASHGRAPH OPTIMIZATION ALGORITHMS:
+     - Algorithm 1: HCS Merkle Tree Batching & CID Chunking Algorithm
+       * When uploading N historical documents, client computes Merkle Tree root:
+         Merkle Root = SHA256(CID_1 || CID_2 || ... || CID_N)
+       * System submits 1 single Merkle Root commitment transaction to Hedera HCS 
+         Topic 0.0.4891024 instead of N separate on-chain transactions.
+       * Reduces Hedera transaction overhead by 90%+, achieving ultra-low cost ($0.0001) 
+         and zero ledger congestion.
+     - Algorithm 2: Gossip-about-Gossip Consensus Finality
+       * Hedera's Asynchronous Byzantine Fault Tolerant (aBFT) virtual voting provides 
+         100% deterministic finality in <3 seconds with zero proof-of-work latency.
+     - Algorithm 3: ZK-HCS Hash Commitment & Integrity Proof
+       * Off-chain ZK hash commitment algorithm verifies document authenticity:
+         Commitment = PoseidonHash(RecordHash, PatientShortID, Nonce)
+       * Enables providers to verify legacy document authenticity before consent grant.
+  8. DPDP DEFAULT CONSENT POLICY SETUP:
+     - Patient configures default privacy preferences (e.g. default consultation consent 
+       expiry = 24 hours; Emergency Break-Glass opt-in = Active).
+     - Preferences registered on `ConsentManager.sol`.
+  9. DASHBOARD ROUTING:
+     - System verifies `RBAC.sol` (Patient default role) and redirects user to `PatientDashboard.jsx`.
+
+
+================================================================================
+3. ORGANIZATION & EMPLOYEE ONBOARDING & RBAC ROLE ASSIGNMENT FLOW
+================================================================================
+
+Diagram:
+[Hospital / Entity Admin] ---> 1. Submit Facility Details ---> [DataFiduciaryRegistry.sol]
+                                                                        | (Super Admin Approves)
+                                                                        v
+[Hospital Admin Dashboard] ---> 2. Onboard Employee Details ---> [RBAC.sol Smart Contract]
+                                                                        | (Assign Role 1-6)
+                                                                        v
+                                                             [HashiCorp Vault Transit Token]
+                                                                        |
+                                                                        v
+                                                             [Hedera HCS Topic 0.0.4891024]
+                                                                        |
+                                                                        v
+                                                             Employee Gains Role Access
+                                                          (Doctor/Pharmacy/Lab Dashboard)
+
+Step-by-Step Flow:
+  1. INSTITUTIONAL FACILITY ONBOARDING REQUEST:
+     - Healthcare Organization (Hospital, Diagnostic Center, Pharmacy Chain, Insurance Co.) 
+       submits facility registration request with official entity name, license numbers, 
+       and corporate wallet address.
+  2. DATA FIDUCIARY REGISTRATION & APPROVAL:
+     - Platform Super Admin accesses `AdminDashboard.jsx` and verifies facility credentials.
+     - Admin invokes `registerFiduciary(facilityName, role)` on `DataFiduciaryRegistry.sol`.
+     - Admin invokes `approveFiduciary(facilityAddress)` to authorize institution on Hedera ledger.
+  3. ORGANIZATION ADMIN INITIATES EMPLOYEE ONBOARDING:
+     - Approved Hospital Admin logs into `HospitalDashboard.jsx` and navigates to 
+       "Staff & Practitioner Onboarding".
+     - Admin clicks "Add New Employee / Practitioner".
+  4. PRACTITIONER CREDENTIAL & IDENTITY INPUT:
+     - Hospital Admin inputs employee details:
+         * Full Name & Official Email
+         * Medical Council / Professional License Registration Number (e.g. NMC Registration)
+         * Designated Healthcare Role (Doctor, Pharmacist, Lab Tech, Claims Officer)
+         * Employee Wallet Address / 8-Digit Short ID
+  5. ON-CHAIN RBAC ROLE ASSIGNMENT:
+     - Hospital Admin signs transaction calling `RBAC.sol` (`registerRole(employeeWallet, roleId)`):
+         * Role 1: Hospital Admin / Facility Operator
+         * Role 2: Diagnostic Lab Technician / Pathologist
+         * Role 3: Doctor / Physician / Surgeon
+         * Role 4: Pharmacist / Dispenser
+         * Role 5: Insurance Claims Officer
+         * Role 6: Regulator / Auditor
+  6. SCOPED HASHICORP VAULT TRANSIT TOKEN DELEGATION:
+     - HashiCorp Vault Transit Engine issues a role-scoped cryptographic transit token.
+     - Token permissions strictly restrict encryption/decryption privileges to the 
+       employee's verified RBAC role and active patient consent grants.
+  7. IMMUTABLE HCS AUDIT PROVENANCE LOGGING:
+     - Event `EMPLOYEE_ROLE_GRANTED` containing (Facility Address, Employee Address, 
+       Role ID, Professional Registration Hash, Timestamp) is published to Hedera 
+       Consensus Service HCS Topic `0.0.4891024`.
+  8. EMPLOYEE FIRST-LOGIN & DASHBOARD ROUTING:
+     - Employee opens platform, connects wallet, and completes DPDP challenge signature.
+     - App checks `RBAC.sol` contract; detects assigned role and routes employee directly 
+       to their specific interface (`DoctorDashboard.jsx`, `PharmacyDashboard.jsx`, 
+       `LabDashboard.jsx`, `HospitalDashboard.jsx`).
+
+
+================================================================================
+4. IDENTITY, AUTHENTICATION & WALLET MAPPING FLOW
+================================================================================
+
+Diagram:
++-------------------+       +-----------------------+       +-------------------+
+|  User / Wallet    | ----> |  Metamask / Web3 Sign | ----> |  WalletMapper.sol |
+|  (0x1234...abcd)  |       |  DPDP Nonce Challenge |       |  8-Digit Short ID |
++-------------------+       +-----------------------+       +-------------------+
+
+Step-by-Step Flow:
+  1. USER CONNECTS WALLET: Patient or Provider connects Web3 Wallet (e.g. MetaMask, HashPack).
+  2. DPDP NONCE CHALLENGE: System issues a unique nonce and timestamp challenge:
+     "Sign this message to authenticate your identity for DPDP Healthcare Consent Network"
+  3. OFF-CHAIN VERIFICATION: User signs the cryptographic message with their private key.
+  4. SHORT ID RESOLUTION: System queries `WalletMapper.sol` to map user's 42-character 
+     EVM wallet address (e.g. 0x04Fee3FD...) to a clean 6-digit Short ID (e.g. 849201).
+  5. DASHBOARD ROUTING: App queries `RBAC.sol` smart contract and routes user to their 
+     authorized dashboard interface (Patient, Doctor, Pharmacy, Lab, Hospital, etc.).
+
+
+================================================================================
+5. ADMIN & GOVERNANCE FLOW (FIDUCIARY REGISTRY & ROLE RBAC)
+================================================================================
+
+Diagram:
+[Admin Wallet] ---> Register & Approve Entity ---> [DataFiduciaryRegistry.sol]
+                                                         |
+                                                         v
+                                                [RBAC Smart Contract]
+                                                         |
+                                                         v
+                                              Authorized Healthcare Role
+                                          (Doctor, Pharmacy, Lab, Hospital)
+
+Step-by-Step Flow:
+  1. REGISTRATION REQUEST: A new healthcare entity (Doctor, Pharmacy, Lab, Hospital, 
+     Insurance, Auditor) submits their organization name and wallet address.
+  2. ADMIN VERIFICATION: System Administrator accesses `AdminDashboard.jsx` and inspects 
+     the entity credentials.
+  3. ON-CHAIN FIDUCIARY REGISTRATION: Admin calls `registerFiduciary(name, role)` on 
+     `DataFiduciaryRegistry.sol`.
+  4. FIDUCIARY APPROVAL: Admin calls `approveFiduciary(address)` to enable full platform access.
+  5. ROLE ASSIGNMENT: Admin updates `RBAC.sol` (`registerRole(user, roleId)`):
+       - Role 1: Hospital
+       - Role 2: Lab
+       - Role 3: Doctor
+       - Role 4: Pharmacy
+       - Role 5: Insurance
+       - Role 6: Auditor
+       - Default: Patient
+
+
+================================================================================
+6. DOCTOR <-> PATIENT FLOW (CONSULTATION, CONSENT & EMR RECORDING)
+================================================================================
+
+Diagram:
+[Doctor] ----- 1. Request Data Access -----> [Patient Dashboard]
+                                                    |
+[Doctor] <----- 2. Grant Consent (AES Key) ---------+
+   |
+   +-- 3. ICD-10 Search (e.g., E11.9)
+   +-- 4. AES-256 Client Encryption (HashiCorp Vault Transit Engine)
+   +-- 5. Pin Payload to Pinata IPFS --------> [IPFS Network]
+   |                                                | CID
+   v                                                v
+[MedicalRecords.sol] <--- 6. Anchor CID --------- [Hedera Ledger]
+   |
+   v
+[AuditLog.sol & HCS Topic 0.0.4891024] (Immutable Access Log)
+
+Step-by-Step Flow:
+  1. ACCESS REQUEST (Doctor -> Patient):
+     - Doctor enters Patient Short ID or Wallet Address in Doctor Dashboard.
+     - Doctor specifies Purpose (e.g., "Cardiology Consultation") and Scope ("All" or "Lab Reports").
+     - Smart contract function `requestAccess(patientAddress, purpose)` is executed.
+  2. CONSENT APPROVAL (Patient -> Doctor):
+     - Patient receives notification in `PatientDashboard.jsx`.
+     - Patient chooses Duration (e.g., 24 Hours, 7 Days) and approves request.
+     - `ConsentManager.sol` executes `approveRequest(requestId, purpose, dataHash, expiry)`.
+  3. CLINICAL ENCOUNTER & ICD-10 SEARCH (Doctor):
+     - Doctor uses `ICDSearchModal.jsx` to lookup standard ICD-10 codes (e.g., search 
+       "diabetes" -> select "Type 2 diabetes mellitus [ICD-10: E11.9]").
+  4. ENCRYPTION & IPFS PINNING (Doctor):
+     - Doctor builds EMR JSON payload including ICD-10 codes, symptoms, and clinical notes.
+     - EMR payload is client-side encrypted using AES-256 with HashiCorp Vault transit engine 
+       session envelope.
+     - Encrypted ciphertext is uploaded to Pinata IPFS, returning IPFS Content ID (CID).
+  5. LEDGER ANCHORING:
+     - Doctor calls `addRecord(patientAddress, cid, recordType, billAmount)` on `MedicalRecords.sol`.
+  6. AUDIT LOGGING:
+     - Event is emitted on-chain (`DataAccessed` / `RecordAdded`) and mirror-logged to 
+       Hedera Consensus Service HCS Topic `0.0.4891024`.
+
+
+================================================================================
+7. PATENTED ZK-HCS EPHEMERAL BREAK-GLASS EMERGENCY ACCESS FLOW
+================================================================================
+
+Diagram:
+[Emergency Clinician] + [Patient Short ID] + [HCS Timestamp]
+                           |
+                           v
+        [SHA-256 Ephemeral Key Derivation Engine]
+                           |
+            +--------------+--------------+
+            |                             |
+            v                             v
+[60-Min Session Key]          [Hedera HCS Topic 0.0.4891024]
+(Decryption Granted)          (Un-erasable Emergency Alert)
+
+Step-by-Step Flow:
+  1. EMERGENCY TRIGGER: Patient is unconscious or incapacitated in an emergency room.
+  2. BREAK-GLASS ACTIVATION: Clinician clicks "Break-Glass Access" in `BreakGlassModal.jsx`.
+  3. EPHEMERAL KEY DERIVATION: System derives a time-bound 60-minute cryptographic key:
+     Ephemeral Key = SHA256(Clinician Signature || HCS Consensus Timestamp || Patient Short ID)
+  4. TEMPORARY DECRYPTION: Clinician gains 60-minute read-only access to essential medical history, 
+     allergies, and blood type from IPFS via Vault emergency transit enclave.
+  5. UN-ERASABLE HCS AUDIT ALERT: System posts a high-priority dual-signature audit record to 
+     Hedera HCS Topic `0.0.4891024`.
+  6. AUTO-EXPIRATION: Ephemeral key expires automatically after 60 minutes.
+
+
+================================================================================
+8. DOCTOR -> PATIENT -> PHARMACY FLOW (PRESCRIPTION & MEDICATION DISPENSATION)
+================================================================================
+
+Diagram:
+[Doctor] ---> 1. Write Prescription (ICD-10 & AI Check)
+   |
+   +---> 2. Encrypt & Upload to IPFS -------------> [IPFS]
+   |                                                   | CID
+   +---> 3. addPrescription() ---------------------> [MedicalRecords.sol]
+                                                           |
+                                                           v
+[Pharmacy] <-- 5. Dispense & Mark On-Chain <--- 4. Patient Shares Rx
+
+Step-by-Step Flow:
+  1. PRESCRIPTION CREATION (Doctor):
+     - Doctor specifies medication, dosage, duration, and ICD-10 diagnosis code.
+     - Built-in AI engine runs Drug-Drug & Allergy Interaction check (e.g. flagging 
+       contraindications like Amlodipine + Simvastatin).
+  2. ENCRYPTION & IPFS UPLOAD:
+     - Prescription payload is AES-256 encrypted and pinned to IPFS.
+  3. SMART CONTRACT ANCHORING:
+     - Doctor calls `addPrescription(patientWallet, patientName, ipfsCid)` on `MedicalRecords.sol`.
+     - Record is queued in pending prescriptions on the blockchain.
+  4. PHARMACY QUEUE & CONSENT (Patient -> Pharmacy):
+     - Patient visits pharmacy or selects registered pharmacy.
+     - Patient grants pharmacy scope consent for medication dispensation.
+  5. VERIFICATION & DISPENSATION (Pharmacy):
+     - Pharmacy opens `PharmacyDashboard.jsx` and fetches pending prescriptions queue.
+     - Pharmacy decrypts prescription CID from IPFS, verifies medicine details and dosage.
+     - Pharmacy dispenses medication and enters bill amount.
+     - Pharmacy calls `markPrescriptionDispensed(recordId, billAmount)` on `MedicalRecords.sol`.
+  6. COMPLETED DISPENSATION:
+     - Prescription status updates to "Dispensed" on-chain and logged to Hedera HCS.
+
+
+================================================================================
+9. DOCTOR <-> PATIENT <-> LAB FLOW (DIAGNOSTIC ORDERS & TEST REPORTS)
+================================================================================
+
+Diagram:
+[Doctor] ---- 1. Create Diagnostic Lab Order ----> [MedicalRecords.sol]
+                                                         |
+[Patient] --- 2. Visit Lab & Grant Scope Consent --------+
+                                                         |
+                                                         v
+[Lab] ------- 3. Perform Test & Generate Report (HL7 FHIR R4)
+  |
+  +---------- 4. AES-256 Encrypt & Pin Report IPFS -> [IPFS]
+  |                                                      | CID
+  +---------- 5. addRecord(Lab Report CID) ---------> [MedicalRecords.sol]
+                                                         |
+                                                         v
+[Doctor & Patient] <-- 6. Decrypt & Verify Integrity <-- [Hedera HCS]
+
+Step-by-Step Flow:
+  1. DIAGNOSTIC ORDER ISSUANCE (Doctor):
+     - Doctor orders lab test (e.g. Complete Blood Count, Lipid Profile, MRI) linked 
+       to ICD-10 disease code.
+     - Order is uploaded to IPFS and anchored to `MedicalRecords.sol`.
+  2. LAB CONSENT & SAMPLE COLLECTION (Patient & Lab):
+     - Patient presents Short ID at Diagnostic Lab.
+     - Lab requests consent for "Lab Reports" scope via `LabDashboard.jsx`.
+     - Patient approves consent request.
+  3. TEST PROCESSING & FHIR GENERATION (Lab):
+     - Lab conducts diagnostic tests.
+     - Lab structures results into standard HL7 FHIR R4 `DiagnosticReport` JSON format.
+  4. REPORT ENCRYPTION & IPFS PINNING:
+     - Lab encrypts report with AES-256 and uploads file/data to Pinata IPFS.
+  5. ON-CHAIN RECORD ANCHORING:
+     - Lab executes `addRecord(patientWallet, cid, "Lab Report", billAmount)` on `MedicalRecords.sol`.
+  6. INTEGRITY VERIFICATION (Doctor & Patient):
+     - Doctor and Patient receive notification in their dashboards.
+     - User views report and uses `BlockchainVerificationPortal.jsx` to verify off-chain 
+       SHA-256 hash match against Hedera HCS timestamped record (100% Integrity Score).
+
+
+================================================================================
+10. PATIENT / HOSPITAL <-> INSURANCE FLOW (CLAIMS & REIMBURSEMENT)
+================================================================================
+
+Diagram:
+[Patient / Hospital] ---> 1. Submit Claim + CIDs + ICD-10 Codes
+                                 |
+                                 v
+[Insurance Dashboard] --> 2. Verify HCS Audit Trail & Integrity
+                                 |
+                                 v
+                          3. AI Policy & Compliance Check
+                                 |
+                                 v
+                          4. Approve / Settle Claim On-Chain
+                                 |
+                                 v
+                          [Hedera Consensus Log]
+
+Step-by-Step Flow:
+  1. CLAIM SUBMISSION (Patient / Hospital -> Insurance):
+     - Patient or Hospital selects clinical records, lab report CIDs, and itemized billing.
+     - Attach ICD-10 diagnosis codes and treatment justification.
+     - Claim request submitted to Insurance Company wallet via `InsuranceDashboard.jsx`.
+  2. LEDGER INTEGRITY AUDIT (Insurance Company):
+     - Insurance company inspects claim in Insurance Dashboard.
+     - System automatically verifies that all referenced record CIDs are cryptographically 
+       anchored on `MedicalRecords.sol` and mirrored on Hedera HCS Topic `0.0.4891024`.
+  3. COMPLIANCE & AI VALIDATION:
+     - AI validation engine checks claim details: verifying ICD-10 codes match treatment 
+       protocols and billing range.
+  4. CLAIM SETTLEMENT:
+     - Insurance Company approves claim.
+     - Approval event, reimbursement amount, and transaction hash recorded to ledger and HCS.
+
+
+================================================================================
+11. HOSPITAL / INSTITUTIONAL WORKFLOW (FACILITY OPERATIONS & FHIR EXPORTS)
+================================================================================
+
+Diagram:
+[Hospital Admin] ---> 1. Manage Departments & Clinicians
+                        |
+                        +---> 2. Patient Admission & EHR Encounters
+                        |
+                        +---> 3. HL7 FHIR R4 Bundle Export ---> [Cross-Hospital Interop]
+
+Step-by-Step Flow:
+  1. PRACTITIONER ONBOARDING: Hospital adds affiliated Doctors and Labs to hospital roster 
+     via `RBAC.sol` role delegation.
+  2. ADMISSION & DISCHARGE ENCOUNTERS: Hospital staff records inpatient encounters, 
+     vital signs, room assignments, and discharge summaries.
+  3. HL7 FHIR R4 EXPORT: Hospital converts patient records into interoperable HL7 FHIR 
+     R4 resources (`Patient`, `Encounter`, `Condition`, `Observation`, `DiagnosticReport`).
+  4. INTEROPERABILITY: Structured FHIR bundles can be exported or transferred seamlessly 
+     to other hospital networks.
+
+
+================================================================================
+12. REGULATOR / AUDITOR FLOW (DPDP COMPLIANCE & HCS AUDIT LOGGING)
+================================================================================
+
+Diagram:
+[Healthcare Actions] ---> [Hedera Consensus Service HCS Topic 0.0.4891024]
+                                      |
+                                      v
+                         [RegulatorDashboard.jsx]
+                                      |
+              +-----------------------+-----------------------+
+              |                                               |
+              v                                               v
+  [100% Audit Provenance]                          [DPDP Right to Erasure Verification]
+
+Step-by-Step Flow:
+  1. HCS TOPIC MIRRORING: All system events (consent grants, revocations, access requests, 
+     record additions, break-glass activations, data erasures) post an immutable message 
+     to Hedera HCS Topic `0.0.4891024`.
+  2. REAL-TIME REGULATORY MONITORING: Regulators view live HCS audit feed via `RegulatorDashboard.jsx`.
+  3. DPDP ACT 2023 COMPLIANCE INSPECTION:
+     - Section 5 (Data Privacy): Regulator verifies 0% raw unencrypted PII/PHI is on-chain.
+     - Section 12 (Right to Erasure): Verifies when a patient executes data erasure, 
+       decryption keys are revoked in HashiCorp Vault transit engine and erasure event 
+       is immutably logged on HCS.
+     - Emergency Break-Glass Auditing: Inspects all 60-minute emergency access logs to ensure 
+       no unauthorized break-glass usage occurred.
+
+
+================================================================================
+13. BENEFICIARY & DEPENDENT FAMILY MANAGEMENT FLOW
+================================================================================
+
+Diagram:
+[Primary Wallet / Parent] ---> Link Dependent Wallet / Short ID
+                                      |
+                                      v
+                           [WalletMapper.sol]
+                                      |
+                                      v
+                     Proxy Consent & Medical Access for Children/Elderly
+
+Step-by-Step Flow:
+  1. LINKING DEPENDENT ACCOUNT: Primary account holder (e.g. parent or guardian) links 
+     beneficiary/dependent wallet or Short ID in `PatientDashboard.jsx`.
+  2. PROXY DELEGATION: `WalletMapper.sol` registers guardian proxy access rights.
+  3. DEPENDENT CARE MANAGEMENT: Guardian can grant/revoke consent, view lab reports, 
+     and manage prescriptions on behalf of minor children or elderly family members.
+
+
+================================================================================
+14. COMPLETE END-TO-END PATIENT HEALTHCARE JOURNEY (FULL LIFECYCLE SCENARIO)
+================================================================================
+
+Scenario: Patient (Short ID: 849201) lands on portal, onboards, uploads historical EHRs 
+with Hedera Merkle Batching, visits Doctor for chest pain, gets Lab tests, obtains Prescription, 
+buys medicines at Pharmacy, and submits Insurance Claim.
+
+Step  Actor            Action                                Smart Contract / Infrastructure
+------------------------------------------------------------------------------------------------
+ 1    Patient          Lands on site & connects Web3 Wallet  Web3Auth MPC / Wallet Connect
+ 2    Patient          Signs DPDP nonce & gets 6-digit ID    WalletMapper.getOrCreateShortId()
+ 3    Patient          Uploads historical EHRs & legacy Rx   AES-256 (Vault) -> Pinata IPFS
+ 4    Patient          Runs Hedera Merkle Batching Algo      HCS Merkle Root -> Hedera Topic 0.0.4891024
+ 5    Super Admin      Registers & Approves Hospital & Lab   DataFiduciaryRegistry & RBAC
+ 6    Hospital Admin   Onboards Doctor & assigns Role 3      RBAC.registerRole() + HCS Log
+ 7    Doctor           Requests data access from Patient     ConsentManager.requestAccess()
+ 8    Patient          Grants 24-hr access consent           ConsentManager.approveRequest()
+ 9    Doctor           Searches ICD-10 "R07.9" (Chest pain)  Stateless ICD-10 Helper Engine
+10    Doctor           Issues Lab Order for ECG & Cardiac    AES-256 (Vault) -> Pinata IPFS -> MedicalRecords.sol
+11    Patient          Visits Lab & grants Lab scope consent ConsentManager.approveRequest()
+12    Lab              Runs ECG, generates FHIR report       AES-256 -> Pinata IPFS -> MedicalRecords.sol
+13    Doctor           Reviews decrypted Lab report          IPFS Decrypt -> Hedera HCS Verified
+14    Doctor           Writes Rx (Amlodipine 5mg)            AI Interaction Check -> MedicalRecords.addPrescription()
+15    Pharmacy         Fetches pending Rx queue              MedicalRecords.getPendingPrescriptions()
+16    Pharmacy         Dispenses medicine & enters bill      MedicalRecords.markPrescriptionDispensed()
+17    Patient          Submits Claim to Insurance            InsuranceDashboard claim request
+18    Insurance        Verifies HCS audit trail & approves   Hedera HCS Topic 0.0.4891024 verification
+19    Regulator        Inspects full end-to-end HCS log      Real-time HCS Topic 0.0.4891024 audit log
+
+================================================================================
+                        END OF SYSTEM FLOWS SPECIFICATION
+================================================================================

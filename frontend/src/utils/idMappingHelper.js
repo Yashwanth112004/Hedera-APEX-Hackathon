@@ -1,7 +1,8 @@
 import { ethers } from 'ethers';
+import deployedConfig from './deployedContracts.json';
 
-// Replace with actual deployed address read from last_mapper.txt
-export const WALLET_MAPPER_ADDRESS = "0xE37d6EE16b9C6eE7C29eD93a5b2Bde40e225E659";
+// Deployed WalletMapper address on Hedera Testnet
+export const WALLET_MAPPER_ADDRESS = deployedConfig?.contracts?.WalletMapper || "0xbBc02d85660D99D7c91Ba91954781A090c4C95Af";
 
 export const WALLET_MAPPER_ABI = [
   "function registerShortID(string calldata _shortID) external",

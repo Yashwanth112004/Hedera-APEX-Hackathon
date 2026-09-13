@@ -1,3 +1,11 @@
+/* Completely disable all Toast / Notification Popups across the app */
+.Toastify, .Toastify__toast-container, .Toastify__toast {
+  display: none !important;
+  visibility: hidden !important;
+  opacity: 0 !important;
+  pointer-events: none !important;
+}
+
 /* App Layout */
 .app {
   width: 100vw;

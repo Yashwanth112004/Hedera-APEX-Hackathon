@@ -28,14 +28,16 @@ import AuditLogs from "./pages/AuditLogs";
 import PharmacyDashboard from "./pages/PharmacyDashboard";
 import InsuranceDashboard from "./pages/InsuranceDashboard";
 import LegalCompliance from "./pages/LegalCompliance";
+import BlockchainVerificationPortal from "./pages/BlockchainVerificationPortal";
+import deployedConfig from "./utils/deployedContracts.json";
 
 /* CONTRACT ADDRESSES */
-const AUDIT_LOG = "0x92d2eCE8bB295b7806A900Fad7CA26Fd55814976";
-const REGISTRY = "0x155Af6ECaFb48861dA7d16Fb8Af2f6ce9d6DD779";
-const CONSENT_MANAGER = "0x931a878562F3c7f3D6B9Ff27f0ce01e1Cb0F4470";
-const ACCESS_MANAGER = "0x62BC569E5047E6f77C3ECA6C056C9337E39bd1BD";
-const MEDICAL_RECORDS = "0xd9BB8653aE2Ba8860e4B436D9FdA4c829F04ce85";
-const RBAC_CONTRACT_ADDRESS = "0x0b11e9AA48bf573A8E9d1D5085b71d8c58de9968";
+const AUDIT_LOG = deployedConfig?.contracts?.AuditLog || "0x4504495D8B7F34a0f3e262c9Be6101c15B8bb06F";
+const REGISTRY = deployedConfig?.contracts?.DataFiduciaryRegistry || "0x9579fA1Aa2A18d4B79b217D2c4d260b4434b553e";
+const CONSENT_MANAGER = deployedConfig?.contracts?.ConsentManager || "0xfce921d33267a0234F4feaB102b55306E1067E04";
+const ACCESS_MANAGER = deployedConfig?.contracts?.DataAccessManager || "0x94caa86Ce9c1F0c80d62043d3e26d70DEd83573B";
+const MEDICAL_RECORDS = deployedConfig?.contracts?.MedicalRecords || "0x0d34189B0aa828410c36b9Fe7b1054e071134A77";
+const RBAC_CONTRACT_ADDRESS = deployedConfig?.contracts?.RoleBasedAccess || deployedConfig?.contracts?.HealthcareRBAC || "0xA0D7B649C3153Ef14873f618476fEaD9235030b3";
 const HARDCODED_ADMIN = "0x04Fee3FD1B338d12FFD6dBD8d66dE1e8e0BB99cB";
 
 /* ABIs */
@@ -699,7 +701,6 @@ function App() {
 
   return (
     <div className="app">
-      <ToastContainer position="top-right" theme="dark" />
       {!account ? (
         <>
           <Navbar
@@ -1122,7 +1123,8 @@ function App() {
           <div className="app-body" style={{ marginTop: '80px' }}>
             {role && <Sidebar role={role} activeTab={activeTab} onTabChange={handleTabChange} />}
             <main className="main-content">
-              {(activeTab === "audit" && (role?.toLowerCase() === 'patient' || role?.toLowerCase() === 'admin')) ? <AuditLogs auditLogContract={auditLogContract} account={actingAsAccount || account} role={role} /> :
+              {activeTab === "verification" ? <BlockchainVerificationPortal /> :
+                (activeTab === "audit" && (role?.toLowerCase() === 'patient' || role?.toLowerCase() === 'admin')) ? <AuditLogs auditLogContract={auditLogContract} account={actingAsAccount || account} role={role} /> :
                 (activeTab === "internal-audit" && ['hospital', 'doctor', 'lab', 'pharmacy', 'insurance'].includes(role?.toLowerCase())) ? <AuditLogs auditLogContract={auditLogContract} account={account} role={role} /> :
                   activeTab === "compliance" ? <LegalCompliance /> :
                     renderDashboard()}

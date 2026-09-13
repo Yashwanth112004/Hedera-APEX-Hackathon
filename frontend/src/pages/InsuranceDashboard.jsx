@@ -5,6 +5,8 @@ import { resolveWalletAddress } from '../utils/idMappingHelper';
 import { getSafePatientConsents } from '../utils/consentHelper';
 import { fetchFromPinata, decryptData } from '../utils/ipfsHelper';
 import { generateLocalShortID, normalizeAddress } from '../utils/idMappingHelper';
+import { verifyRecordAgainstHCS, publishHCSEvent, HEDERA_HCS_TOPIC_ID } from '../utils/hcsService';
+import { getICD10ByCode } from '../utils/icd10Helper';
 
 const InsuranceDashboard = ({ account, consentContract, auditLogContract, accessContract, medicalRecordsContract, walletMapperContract }) => {
     const [activeSubTab, setActiveSubTab] = useState('overview');
@@ -343,7 +345,7 @@ const InsuranceDashboard = ({ account, consentContract, auditLogContract, access
 
             await tx.wait();
 
-            // 3. Log Disbursement to Audit Ledger for transparency
+            // 3. Log Disbursement to Audit Ledger and Hedera HCS
             try {
                 const auditWithSigner = auditLogContract.connect(signer);
                 const logTx = await auditWithSigner.logDataAccessed(
@@ -354,7 +356,16 @@ const InsuranceDashboard = ({ account, consentContract, auditLogContract, access
                     { gasLimit: 1000000 }
                 );
                 await logTx.wait();
-                toast.success("Disbursement Audit Logged on Ledger");
+
+                // Publish immutable HCS audit event to Topic 0.0.4891024
+                publishHCSEvent(
+                    'INSURANCE_CLAIM_APPROVED',
+                    account,
+                    `Insurance Claim ${claim.id} settled for ₹${finalAmount} (Disbursed ${hbarAmount} HBAR) to ${patientWallet}`,
+                    { claimId: claim.id, cid: claim.cid, patient: patientWallet, amount: finalAmount, hcsTopic: HEDERA_HCS_TOPIC_ID }
+                );
+
+                toast.success("Disbursement Audit Logged on Ledger & Hedera HCS Topic 0.0.4891024");
             } catch (logErr) {
                 console.warn("Disbursement logged only to transaction history, audit ledger failed", logErr);
             }
@@ -365,7 +376,7 @@ const InsuranceDashboard = ({ account, consentContract, auditLogContract, access
             );
             setClaims(updated);
             localStorage.setItem(`insurance_claims_${account}`, JSON.stringify(updated));
-            toast.success("Funds Disbursed to Healthcare Provider");
+            toast.success("Funds Disbursed to Healthcare Provider & Verified on HCS");
             fetchInsuranceData();
         } catch (err) {
             console.error("Disbursement Failed", err);

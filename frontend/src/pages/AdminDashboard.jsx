@@ -2,9 +2,11 @@ import { useEffect, useState } from "react";
 import { ethers } from "ethers";
 import { toast } from "react-toastify";
 
-// Use the provided Role Based Smart Contract Address
-const RBAC_ADDRESS = "0x0b11e9AA48bf573A8E9d1D5085b71d8c58de9968";
-const LEGACY_RBAC = "0xc285Cba71f206fd6AB83514D82Dd389Fe0584919";
+import deployedConfig from "../utils/deployedContracts.json";
+
+// Use the deployed Role Based Smart Contract Address
+const RBAC_ADDRESS = deployedConfig?.contracts?.RoleBasedAccess || deployedConfig?.contracts?.HealthcareRBAC || "0xA0D7B649C3153Ef14873f618476fEaD9235030b3";
+const LEGACY_RBAC = "0x0b11e9AA48bf573A8E9d1D5085b71d8c58de9968";
 const HARDCODED_ADMIN = "0x04Fee3FD1B338d12FFD6dBD8d66dE1e8e0BB99cB";
 
 const roleABI = [

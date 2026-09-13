@@ -2,6 +2,8 @@ import React, { useState } from 'react';
 import { toast } from 'react-toastify';
 import { ethers } from 'ethers';
 import { getSafePendingRequests } from '../utils/consentHelper';
+import { createFHIRBundle, createFHIRPatient } from '../utils/fhirHelper';
+import { publishHCSEvent, HEDERA_HCS_TOPIC_ID } from '../utils/hcsService';
 
 const HospitalDashboard = ({
   account,
@@ -261,7 +263,15 @@ const HospitalDashboard = ({
       const tx = await medicalRecordsContract.addRecord(targetWallet, cid, payload.type, billAmountNum, { gasLimit: 1000000 });
       await tx.wait();
 
-      toast.success("Record Anchored on Hedera!");
+      // Publish event to Hedera HCS Topic 0.0.4891024
+      publishHCSEvent(
+        'LAB_REPORT_ANCHORED',
+        account,
+        `Hospital anchored clinical record (${payload.type}) for patient ${targetWallet} [CID: ${cid}]`,
+        { cid, patient: targetWallet, type: payload.type, hcsTopic: HEDERA_HCS_TOPIC_ID }
+      );
+
+      toast.success("Record Anchored on Hedera & Mirrored to HCS!");
       setShowUploadModal(false);
       setStats(prev => ({ ...prev, uploads: prev.uploads + 1 }));
       syncHospitalLogs();

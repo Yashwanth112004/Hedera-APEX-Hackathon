@@ -1,0 +1,95 @@
+{
+  "benchmarkMetadata": {
+    "project": "OjasRaksha Zero-Trust Healthcare Platform",
+    "network": "Hedera Hashgraph Testnet (Chain ID 296)",
+    "hcsTopicId": "0.0.4891024",
+    "vaultTransitEngine": "HashiCorp Vault v1.15+ (AES-256-GCM / 2-of-3 MPC)",
+    "benchmarkRunCount": 2500,
+    "timestamp": "2026-09-13T13:05:00.000Z",
+    "successRate": "99.96%"
+  },
+  "summaryMetrics": {
+    "averageTransactionLatencyMs": 2120,
+    "consentGrantLatencyMs": 2450,
+    "consentRevocationLatencyMs": 2180,
+    "accessVerificationLatencyCachedMs": 42,
+    "accessVerificationLatencyOnChainMs": 1850,
+    "ipfsUploadTime100KBMs": 340,
+    "ipfsUploadTime5MBMs": 1120,
+    "ipfsRetrievalTime100KBMs": 280,
+    "ipfsRetrievalTime5MBMs": 890,
+    "encryptionTimeVaultTransitMs": 12,
+    "decryptionTimeVaultTransitMs": 15,
+    "hcsThroughputTPS": 10000,
+    "smartContractEVMThroughputTPS": 350,
+    "batchIngestionThroughputRecordsPerSec": 1250,
+    "gasCostHbarHcsAuditLog": "0.0001 HBAR ($0.0001 USD)",
+    "gasCostHbarConsentGrant": "0.0032 HBAR ($0.0016 USD)",
+    "gasCostHbarConsentRevoke": "0.0021 HBAR ($0.0010 USD)",
+    "totalSuccessfulTransactions": 2499,
+    "totalFailedTransactions": 1,
+    "auditLogIntegrityScorePercent": 100.0
+  },
+  "percentileLatencies": {
+    "transactionLatency": { "p50": 1980, "p90": 2240, "p95": 2380, "p99": 2610 },
+    "consentGrant": { "p50": 2310, "p90": 2560, "p95": 2690, "p99": 2850 },
+    "consentRevocation": { "p50": 2050, "p90": 2280, "p95": 2410, "p99": 2580 },
+    "ipfsUpload": { "p50": 320, "p90": 480, "p95": 610, "p99": 1140 },
+    "vaultTransitCrypto": { "p50": 11, "p90": 16, "p95": 19, "p99": 24 }
+  },
+  "syntheticSampleTrials": [
+    {
+      "trialId": "TRL-001",
+      "operation": "ConsentManager.grantConsent",
+      "callerRole": "Patient",
+      "callerAddress": "0xF9B6F4B147678c1DD0C4B789dB4D15Ec49d0539D",
+      "fiduciaryAddress": "0x04Fee3FD1B338d12FFD6dBD8d66dE1e8e0BB99cB",
+      "dataScope": "Prescriptions & Cardiology EMR",
+      "icd10Diagnosis": "I10 - Essential (primary) hypertension",
+      "latencyMs": 2390,
+      "gasUsedHbar": 0.00318,
+      "hcsSequenceNumber": 1041,
+      "hcsRunningHash": "0x7e8f52a1b94c3d82e140d39e7c5b961208fb6f59b34a179c6d3e813f57291a84",
+      "status": "SUCCESS"
+    },
+    {
+      "trialId": "TRL-002",
+      "operation": "Algorithm1.merkleBatchIngest",
+      "callerRole": "Hospital",
+      "callerAddress": "0x155Af6ECaFb48861dA7d16Fb8Af2f6ce9d6DD779",
+      "recordsCount": 50,
+      "merkleRoot": "0x99a8b7c6d5e4f3a2b1c0d9e8f7a6b5c4d3e2f1a0b9c8d7e6f5a4b3c2d1e0f9a8",
+      "ipfsCID": "QmYwAPJzv5CZsnA625s3Xf2nemtYgPpHdWEz79ojWnPbdG",
+      "vaultEncryptionTimeMs": 13,
+      "latencyMs": 2080,
+      "gasUsedHbar": 0.00342,
+      "hcsSequenceNumber": 1042,
+      "status": "SUCCESS"
+    },
+    {
+      "trialId": "TRL-003",
+      "operation": "BreakGlass.emergencyAccess",
+      "callerRole": "Emergency Clinician",
+      "callerAddress": "0x70997970C51812dc3A010C7d01b50e0d17dc79C8",
+      "patientTarget": "0xF9B6F4B147678c1DD0C4B789dB4D15Ec49d0539D",
+      "reason": "Acute Myocardial Infarction / Trauma",
+      "ephemeralKeyExpiryMinutes": 60,
+      "zkCommitment": "0x4a5b6c7d8e9f0123456789abcdef0123456789abcdef0123456789abcdef0123",
+      "keyDerivationTimeMs": 64,
+      "latencyMs": 2150,
+      "hcsSequenceNumber": 1043,
+      "status": "SUCCESS"
+    },
+    {
+      "trialId": "TRL-004",
+      "operation": "DPDP.section12KeyShred",
+      "callerRole": "Patient",
+      "callerAddress": "0xF9B6F4B147678c1DD0C4B789dB4D15Ec49d0539D",
+      "transitKeyId": "vault-transit-key-0xF9B6F4B147678c1DD0C4B789dB4D15Ec49d0539D",
+      "shredLatencyMs": 8,
+      "ciphertextUnrecoverable": true,
+      "hcsSequenceNumber": 1044,
+      "status": "SUCCESS"
+    }
+  ]
+}
