@@ -1,7 +1,6 @@
 # 🏥 OjasRaksha Decentralized Healthcare Platform
 ### *Zero-Trust, Zero-Database Healthcare Data Governance on Hedera Hashgraph & HashiCorp Vault*
 
-<img width="1536" height="1024" alt="image" src="https://github.com/user-attachments/assets/a00ca3c7-1aaf-4f8c-a0c2-d71968ced368" />
 
 
 [![Hedera HCS Topic](https://img.shields.io/badge/Hedera_HCS_Topic-0.0.4891024-0284C7?style=flat-square&logo=hedera)](https://portal.hedera.com/)
@@ -12,6 +11,7 @@
 [![Hardhat](https://img.shields.io/badge/Hardhat-2.28.6-FFF100?style=flat-square&logo=ethereum)](https://hardhat.org/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg?style=flat-square)](https://opensource.org/licenses/MIT)
 
+<img width="1536" height="1024" alt="image" src="https://github.com/user-attachments/assets/a00ca3c7-1aaf-4f8c-a0c2-d71968ced368" />
 ---
 
 ## 📑 Table of Contents
